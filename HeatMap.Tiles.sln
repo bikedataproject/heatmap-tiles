@@ -1,0 +1,63 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.26124.0
+MinimumVisualStudioVersion = 15.0.26124.0
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{01CC3655-3401-4D57-9B64-555853D39467}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HeatMap.Tiles", "src\HeatMap.Tiles\HeatMap.Tiles.csproj", "{B44C3525-1175-454C-8F10-2FEBDF23975D}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{6EB3CF77-9B50-49E6-B186-92A82F539D5A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HeatMap.Tiles.Test.Functional", "test\HeatMap.Tiles.Test.Functional\HeatMap.Tiles.Test.Functional.csproj", "{91222255-96B9-4941-9900-0B1E63BC3DBF}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "root", "root", "{009CE50B-B9E2-48A4-B61E-DC80A6D35618}"
+ProjectSection(SolutionItems) = preProject
+	.gitignore = .gitignore
+	README.md = README.md
+	LICENSE = LICENSE
+EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B44C3525-1175-454C-8F10-2FEBDF23975D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B44C3525-1175-454C-8F10-2FEBDF23975D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B44C3525-1175-454C-8F10-2FEBDF23975D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B44C3525-1175-454C-8F10-2FEBDF23975D}.Debug|x64.Build.0 = Debug|Any CPU
+		{B44C3525-1175-454C-8F10-2FEBDF23975D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B44C3525-1175-454C-8F10-2FEBDF23975D}.Debug|x86.Build.0 = Debug|Any CPU
+		{B44C3525-1175-454C-8F10-2FEBDF23975D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B44C3525-1175-454C-8F10-2FEBDF23975D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B44C3525-1175-454C-8F10-2FEBDF23975D}.Release|x64.ActiveCfg = Release|Any CPU
+		{B44C3525-1175-454C-8F10-2FEBDF23975D}.Release|x64.Build.0 = Release|Any CPU
+		{B44C3525-1175-454C-8F10-2FEBDF23975D}.Release|x86.ActiveCfg = Release|Any CPU
+		{B44C3525-1175-454C-8F10-2FEBDF23975D}.Release|x86.Build.0 = Release|Any CPU
+		{91222255-96B9-4941-9900-0B1E63BC3DBF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{91222255-96B9-4941-9900-0B1E63BC3DBF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{91222255-96B9-4941-9900-0B1E63BC3DBF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{91222255-96B9-4941-9900-0B1E63BC3DBF}.Debug|x64.Build.0 = Debug|Any CPU
+		{91222255-96B9-4941-9900-0B1E63BC3DBF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{91222255-96B9-4941-9900-0B1E63BC3DBF}.Debug|x86.Build.0 = Debug|Any CPU
+		{91222255-96B9-4941-9900-0B1E63BC3DBF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{91222255-96B9-4941-9900-0B1E63BC3DBF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{91222255-96B9-4941-9900-0B1E63BC3DBF}.Release|x64.ActiveCfg = Release|Any CPU
+		{91222255-96B9-4941-9900-0B1E63BC3DBF}.Release|x64.Build.0 = Release|Any CPU
+		{91222255-96B9-4941-9900-0B1E63BC3DBF}.Release|x86.ActiveCfg = Release|Any CPU
+		{91222255-96B9-4941-9900-0B1E63BC3DBF}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{B44C3525-1175-454C-8F10-2FEBDF23975D} = {01CC3655-3401-4D57-9B64-555853D39467}
+		{91222255-96B9-4941-9900-0B1E63BC3DBF} = {6EB3CF77-9B50-49E6-B186-92A82F539D5A}
+	EndGlobalSection
+EndGlobal
