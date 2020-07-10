@@ -1,6 +1,6 @@
-# heatmap-tiles
+# heatmap-tiles  :bicyclist: :bicyclist: :bicyclist:
 
-A service to general a global heatmap of cycling data.  :bicyclist: :bicyclist: :bicyclist:
+A service to general a global heatmap of cycling data. 
 
 This service generates the data behind the map that is then generate by the mapbox gl js heatmap layer. A demo is available [here](https://bikedataproject.github.io/heatmap-experiment/).
 
