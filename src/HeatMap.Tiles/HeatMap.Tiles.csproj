@@ -11,8 +11,4 @@
     <PackageReference Include="NetTopologySuite.IO.VectorTiles.Mapbox" Version="0.0.13" />
   </ItemGroup>
   
-  <ItemGroup>
-    <Folder Include="Tiles" />
-  </ItemGroup>
-  
 </Project>
