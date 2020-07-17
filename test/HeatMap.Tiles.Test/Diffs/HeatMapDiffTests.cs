@@ -21,5 +21,15 @@ namespace HeatMap.Tiles.Test.Diffs
             Assert.Equal(12, diff.Zoom);
             Assert.Equal(1024U, diff.Resolution);
         }
+
+        [Fact]
+        public void HeatMapDiff_Set_Should_GetSame()
+        {
+            var diff = new HeatMapDiff(12, 1024);
+
+            diff[4546541, 47744] = 46541;
+            
+            Assert.Equal(46541U,diff[4546541, 47744]);
+        }
     }
 }
