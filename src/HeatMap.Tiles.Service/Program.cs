@@ -14,12 +14,9 @@ namespace HeatMap.Tiles.Service
     class Program
     {
         private const string StateFileName = "state.json";
-        private const string HeatMapFileName = "heat.map";
         private const uint Resolution = 512;
         private const int HeatMapZoom = 14;
-        private const int MaxDays = 30;
-        private const int MinZoom = 8;
-        private const int MaxZoom = 14;
+        private const int MaxDays = 1;
         
         static async Task Main(string[] args)
         {
@@ -44,7 +41,7 @@ namespace HeatMap.Tiles.Service
             }
             
             var stateFile = Path.Combine(path, StateFileName);
-            var heatMapFile = Path.Combine(path, HeatMapFileName);           
+            var heatMapPath = Path.Combine(path, "heatmap-cache");           
             var lockFile = Path.Combine(path, "heatmap-service.lock");
             if (LockHelper.IsLocked(lockFile, TimeSpan.TicksPerDay))
             {
@@ -77,17 +74,15 @@ namespace HeatMap.Tiles.Service
                 var earliestAndMax = earliest.Value.AddDays(MaxDays);
 
                 // select all data in this timespan.
-                var modifiedTiles = new HashSet<(uint x, uint y)>();
                 try
                 {
                     Log.Verbose($"Updating tiles for [{earliest.Value},{earliestAndMax}[");
-                    HeatMapDiff heatMapDiff = null;
+                    var heatMapDiff = new HeatMapDiff(HeatMapZoom, Resolution);
                     var contributionsCount = 0;
                     await foreach (var (createdAt, geometry) in cn.GetDataForTimeWindow(earliest.Value, earliestAndMax))
                     {
                         // add to heatmap and keep modified tiles.
-                        heatMapDiff ??= OpenOrCreateHeatMap(heatMapFile);
-                        modifiedTiles.UnionWith(heatMapDiff.Add(geometry));
+                        heatMapDiff.Add(geometry);
                         contributionsCount++;
                         if (contributionsCount % 100 == 0) Log.Verbose($"Added {contributionsCount}...");
 
@@ -101,26 +96,27 @@ namespace HeatMap.Tiles.Service
                     state ??= new State();
                     state.TimeStamp = earliestAndMax;
 
-                    if (heatMapDiff != null)
+                    if (contributionsCount > 0)
                     {
-                        // update all modified tiles.
-                        var tree = heatMapDiff.ToVectorTiles(MinZoom, MaxZoom, i =>
-                            {
-                                if (i == 14) return Resolution;
-                                return Resolution / 2;
-                            },
-                            modifiedTiles.ToTileFilter(heatMapDiff.Zoom));
-                        tree = tree.Select(x =>
+                        var heatMap = new HeatMap(heatMapPath, Resolution);
+                        
+                        // apply diff.
+                        var modifiedTiles = heatMap.ApplyDiff(heatMapDiff, toResolution: _ => Resolution);
+                            
+                        // log when tiles are written.
+                        modifiedTiles = modifiedTiles.Select(tile =>
                         {
-                            var tile = new NetTopologySuite.IO.VectorTiles.Tiles.Tile(x.TileId);
-                            Log.Verbose($"Writing tile {tile}...");
+                            Log.Verbose($"Writing tile {tile.z}/{tile.x}/{tile.y}.mvt...");
                     
-                            return x;
+                            return tile;
                         });
-                    
+                        
+                        // build vector tiles.
+                        var vectorTiles = heatMap.ToVectorTiles(modifiedTiles);
+
                         // write the tiles to disk as mvt.
                         Log.Verbose("Writing tiles...");
-                        tree.Write(path);
+                        vectorTiles.Write(path);
                     }
                 }
                 catch (Exception e)
@@ -142,16 +138,6 @@ namespace HeatMap.Tiles.Service
             {
                 File.Delete(lockFile);
             }
-        }
-
-        private static HeatMapDiff OpenOrCreateHeatMap(string heatMapFile)
-        {
-            if (File.Exists(heatMapFile))
-            {
-                return new HeatMapDiff(File.Open(heatMapFile, FileMode.Open));
-            }
-            
-            return new HeatMapDiff(File.Open(heatMapFile, FileMode.Create), HeatMapZoom, Resolution);
         }
 
         private static void EnableLogging(IConfigurationRoot config)

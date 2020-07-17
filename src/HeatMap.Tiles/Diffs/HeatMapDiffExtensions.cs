@@ -1,12 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
-using HeatMap.Tiles.Tilers;
 using NetTopologySuite.Features;
 using NetTopologySuite.Geometries;
-using NetTopologySuite.IO.VectorTiles;
-using NetTopologySuite.IO.VectorTiles.Tiles;
 
 namespace HeatMap.Tiles.Diffs
 {
@@ -22,22 +17,34 @@ namespace HeatMap.Tiles.Diffs
         {
             if (!(geometry is LineString ls)) return;
 
-            foreach (var tileId in ls.Tiles(heatMapDiff.Zoom))
+            if (ls.Coordinates.Length == 0) return;
+            
+            void Draw(long x, long y)
             {
-                var tilePolygon = TileStatic.ToPolygon(heatMapDiff.Zoom, tileId);
-                
-                try
-                {
-                    foreach (var segment in tilePolygon.Cut(ls))
-                    {
-                        heatMapDiff.Add(tileId, segment, cost);
-                    }
-                }
-                catch (Exception e)
-                {
-                                
-                }
+                if (x < 0) return;
+                if (y < 0) return;
+
+                heatMapDiff[x, y] += cost;
             }
+
+            var previous = heatMapDiff.ToHeatMapCoordinates(ls.Coordinates[0]);
+            for (var c = 1; c < ls.Coordinates.Length; c++)
+            {
+                var current = heatMapDiff.ToHeatMapCoordinates(ls.Coordinates[c]);
+                
+                Bresenhams.Draw(previous.x, previous.y, current.x, current.y, Draw);
+
+                previous = current;
+            }
+        }
+
+        internal static (long x, long y) ToHeatMapCoordinates(this HeatMapDiff heatMapDiff, Coordinate coordinate)
+        {
+            var localTile = TileStatic.ToLocalTileCoordinates(heatMapDiff.Zoom, (coordinate.X, coordinate.Y),
+                (int)heatMapDiff.Resolution);
+            var tile = TileStatic.ToTile(heatMapDiff.Zoom, localTile.tileId);
+            return (tile.x * heatMapDiff.Resolution + localTile.x,
+                tile.y * heatMapDiff.Resolution + localTile.y);
         }
 
         internal static (long x, long y) GetTilePosition(this HeatMapDiff diff, uint tileId)

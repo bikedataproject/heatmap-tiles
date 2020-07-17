@@ -8,6 +8,9 @@ using Reminiscence.IO.Streams;
 
 namespace HeatMap.Tiles
 {
+    /// <summary>
+    /// A tile in a heat map.
+    /// </summary>
     public class HeatMapTile
     {
         private const int BlockSize = 64;
@@ -75,10 +78,10 @@ namespace HeatMap.Tiles
 
                 for (var o = 0; o < BlockSize; o++)
                 {
-                    var pos = blockPointer + o;
-                    var val = _blocks[pos];
+                    var val = _blocks[blockPointer + o];
                     if (val == 0) continue;
 
+                    var pos = b * BlockSize + o;
                     var x = (int)(pos / this.Resolution);
                     var y = (int)(pos - (x * Resolution));
                     yield return (x, y, val);

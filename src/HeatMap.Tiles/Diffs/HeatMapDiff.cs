@@ -11,7 +11,7 @@ namespace HeatMap.Tiles.Diffs
     {
         private const uint NoTile = uint.MaxValue;
         private readonly uint _tileResolution;
-        private readonly MemoryArray<uint> _tilePointers;
+        private readonly uint[] _tilePointers;
         private readonly MemoryArray<uint> _tiles;
 
         private (uint first, uint last)? _range;
@@ -29,7 +29,7 @@ namespace HeatMap.Tiles.Diffs
             _tileResolution = (uint) (1 << zoom);
             var tileCount = _tileResolution * _tileResolution;
             
-            _tilePointers = new MemoryArray<uint>(tileCount);
+            _tilePointers = new uint[tileCount];
             for (var i = 0; i < _tilePointers.Length; i++)
             {
                 _tilePointers[i] = NoTile;

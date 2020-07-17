@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using HeatMap.Tiles.Diffs;
 using NetTopologySuite.Features;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO.VectorTiles;
 using NetTopologySuite.IO.VectorTiles.Tiles;
 
+[assembly:InternalsVisibleTo("HeatMap.Tiles.Test")]
+[assembly:InternalsVisibleTo("HeatMap.Tiles.Test.Functional")]
 namespace HeatMap.Tiles
 {
     /// <summary>
@@ -18,7 +21,28 @@ namespace HeatMap.Tiles
         /// </summary>
         /// <param name="zoom">The zoom.</param>
         public delegate uint ToResolution(int zoom);
-        
+
+        /// <summary>
+        /// Adds the given geometries to the heat map.
+        /// </summary>
+        /// <param name="heatMap">The heat map.</param>
+        /// <param name="geometries">The geometries.</param>
+        /// <param name="minZoom">The minimum zoom level.</param>
+        /// <param name="toResolution">The resolution function.</param>
+        /// <param name="zoom">The zoom level.</param>
+        /// <param name="resolution">The resolution.</param>
+        public static IEnumerable<(uint x, uint y, int z)> Add(this HeatMap heatMap, IEnumerable<Geometry> geometries, int zoom = 14, uint resolution = 1024, 
+            ToResolution toResolution = null, int minZoom = 0)
+        {
+            var heatMapDiff = new HeatMapDiff(zoom, resolution);
+            foreach (var geometry in geometries)
+            {
+                heatMapDiff.Add(geometry);
+            }
+
+            return heatMap.ApplyDiff(heatMapDiff, minZoom, toResolution);
+        }
+
         /// <summary>
         /// Applies the given diff by writing it to the heat map.
         /// </summary>
