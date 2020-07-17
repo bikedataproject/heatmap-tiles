@@ -1,18 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFramework>netstandard2.1</TargetFramework>
     <LangVersion>8</LangVersion>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   
   <ItemGroup>
     <PackageReference Include="Reminiscence" Version="1.4.0-pre003" />
-    <PackageReference Include="NetTopologySuite.IO.VectorTiles" Version="0.0.13" />
+    <PackageReference Include="NetTopologySuite.IO.VectorTiles.Mapbox" Version="0.0.13" />
   </ItemGroup>
   
   <ItemGroup>
     <Folder Include="Tiles" />
   </ItemGroup>
-
+  
 </Project>

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using HeatMap.Tiles.Tiles;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.Operation.Overlay;
 
@@ -8,26 +7,21 @@ namespace HeatMap.Tiles.Tilers
 {
     internal static class LineStringTiler
     {
-        /// <summary>
-        /// Adds the given linestring.
-        /// </summary>
-        /// <param name="heatMapTile">The tile.</param>
-        /// <param name="lineString">The linestring.</param>
-        /// <param name="cost">The cost.</param>
-        public static void Add(this HeatMapTile heatMapTile, LineString lineString, uint cost = 1)
+        public static bool Add(this HeatMapTile heatMapTile, uint tileId, LineString lineString, uint cost = 1)
         {
+            var hasWritten = false;
             void Draw(int x, int y)
             {
                 if (x < 0) return;
                 if (y < 0) return;
-                if (x >= heatMapTile.Resolution) return;
-                if (y >= heatMapTile.Resolution) return;
+                if (x >= heatMapTile.HeatMap.Resolution) return;
+                if (y >= heatMapTile.HeatMap.Resolution) return;
 
                 heatMapTile[x, y] += cost;
+                hasWritten = true;
             }
-            
-            var tile = new Tile(heatMapTile.TileId);
-            var tgt = new TileGeometryTransform(tile, heatMapTile.Resolution);
+
+            var tgt = new TileGeometryTransform(heatMapTile.HeatMap.Zoom, tileId, heatMapTile.HeatMap.Resolution);
             int currentX = 0, currentY = 0;
             for (var c = 0; c < lineString.Coordinates.Length; c++)
             {
@@ -39,6 +33,8 @@ namespace HeatMap.Tiles.Tilers
                 
                 Bresenhams(previousX, previousY, currentX, currentY, Draw);
             }
+
+            return hasWritten;
         }
         
         // https://stackoverflow.com/questions/11678693/all-cases-covered-bresenhams-line-algorithm
@@ -80,41 +76,40 @@ namespace HeatMap.Tiles.Tilers
         /// <param name="zoom">The zoom.</param>
         /// <returns>An enumerable of all tiles.</returns>
         /// <remarks>It's possible this returns too many tiles, it's up to the 'Cut' method to exactly decide what tiles a linestring belongs in.</remarks>
-        public static IEnumerable<ulong> Tiles(this LineString lineString, int zoom)
+        public static IEnumerable<uint> Tiles(this LineString lineString, int zoom)
         {
             // always return the tile of the first coordinate.
-            var previousTileId = Tile.CreateAroundLocationId(lineString.Coordinates[0].Y, lineString.Coordinates[0].X, zoom);
+            var previousTileId = TileStatic.WorldTileLocalId(lineString.Coordinates[0].X, lineString.Coordinates[0].Y, zoom);
             yield return previousTileId;
             
             // return all the next tiles.
-            HashSet<ulong> tiles = null;
+            HashSet<uint> tiles = null;
             for (var c = 1; c < lineString.Coordinates.Length; c++)
             {
                 var coordinate = lineString.Coordinates[c];
-                var tileId = Tile.CreateAroundLocationId(coordinate.Y, coordinate.X, zoom);
+                var tileId = TileStatic.WorldTileLocalId(coordinate.X, coordinate.Y, zoom);
                 
                 // only return changed ids.
                 if (tileId == previousTileId) continue;
                 
                 // always two tiles or more, create hashset.
                 // make sure to return only unique tiles.
-                if (tiles == null) tiles = new HashSet<ulong> {previousTileId};
+                tiles ??= new HashSet<uint> {previousTileId};
 
                 // if the tiles are not neighbours then also return everything in between.
-                if (!Tile.IsDirectNeighbour(tileId, previousTileId))
+                if (!TileStatic.IsDirectNeighbour(zoom, tileId, previousTileId))
                 { 
                     // determine all tiles between the two.
                     var previousCoordinate = lineString.Coordinates[c - 1];
-                    var previousTile = new Tile(previousTileId);
                     var previousTileCoordinates =
-                        previousTile.SubCoordinates(previousCoordinate.Y, previousCoordinate.X);
-                    var nextTile = new Tile(tileId);
-                    var nextTileCoordinates = nextTile.SubCoordinates(coordinate.Y, coordinate.X);
+                        TileStatic.SubCoordinates(zoom, previousTileId,previousCoordinate.X, previousCoordinate.Y);
+                    var nextTileCoordinates = 
+                        TileStatic.SubCoordinates(zoom, tileId, coordinate.X, coordinate.Y);
 
                     foreach (var (x, y) in Shared.LineBetween(previousTileCoordinates.x, previousTileCoordinates.y,
                         nextTileCoordinates.x, nextTileCoordinates.y))
                     {
-                        var betweenTileId = Tile.CalculateTileId(zoom, x, y);
+                        var betweenTileId = TileStatic.ToLocalId((uint)x, (uint)y, zoom);
                         if (tiles.Contains(betweenTileId)) continue;
                         tiles.Add(betweenTileId);
                         yield return betweenTileId;
