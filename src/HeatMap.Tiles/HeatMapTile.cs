@@ -1,65 +1,104 @@
+using System;
 using System.IO;
+using HeatMap.Tiles.IO;
 using Reminiscence.Arrays;
 using Reminiscence.IO;
 using Reminiscence.IO.Streams;
 
 namespace HeatMap.Tiles
 {
-    internal class HeatMapTile
+    public class HeatMapTile
     {
-        private readonly ArrayBase<uint> _data;
+        private const int BlockSize = 64;
+        private const uint NoBlock = uint.MaxValue;
+        private readonly ArrayBase<uint> _blockPointers;
+        private readonly ArrayBase<uint> _blocks;
+        private readonly uint _resolution;
 
-        internal HeatMapTile(HeatMap heatMap, Stream stream)
+        public HeatMapTile(Stream stream, uint resolution)
         {
-            HeatMap = heatMap;
+            if (stream.Position != stream.Length) throw new Exception("This is not a new tile.");
+            _resolution = resolution;
             
-            _data = ArrayBase<uint>.CreateFor(new MemoryMapStream(new LimitedStream(stream)), HeatMap.Resolution * HeatMap.Resolution,
-                ArrayProfile.NoCache);
-            if (stream.Position == stream.Length)
+            var length = _resolution * _resolution;
+            var blocks = length / BlockSize;
+            
+            // write resolution.
+            stream.WriteUInt32(_resolution);
+            
+            // create the mapped block pointers array and initialize with zeros.
+            _blockPointers = ArrayBase<uint>.CreateFor(new MemoryMapStream(new LimitedStream(stream)), 
+                blocks, ArrayProfile.NoCache);
+            stream.Seek(4 + (blocks * 4), SeekOrigin.Begin);
+            for (var i = 0; i < _blockPointers.Length; i++)
             {
-                for (var i = 0; i < heatMap.Resolution * heatMap.Resolution; i++)
-                {
-                    _data[i] = 0;
-                }
+                _blockPointers[i] = NoBlock;
             }
+            stream.Seek(4 + (blocks * 4), SeekOrigin.Begin);
+            
+            // create the mapped blocks array at the end.
+            // no need to initialize, it is empty.
+            _blocks = ArrayBase<uint>.CreateFor(new MemoryMapStream(new LimitedStream(stream)), 
+                0, ArrayProfile.NoCache);
         }
 
-        public HeatMap HeatMap { get; }
-
-
-        public uint SumRange(long x, long y, long step)
+        public HeatMapTile(Stream stream)
         {
-            uint sum = 0;
-            var xOffset = (x * HeatMap.Resolution);
-            for (var i = xOffset; i < xOffset + (step * HeatMap.Resolution); 
-                i += HeatMap.Resolution)
-            {
-                for (var j = y ; j < y + step; j++)
-                {
-                    sum += _data[i + j];
-                }
-            }
+            if (stream.Position == stream.Length) throw new Exception("No data in stream.");
 
-            return sum;
+            // read resolution.
+            _resolution = stream.ReadUInt32();
+            
+            var length = _resolution * _resolution;
+            var blocks = length / BlockSize;
+            
+            // create the mapped block pointers array.
+            _blockPointers = ArrayBase<uint>.CreateFor(new MemoryMapStream(new LimitedStream(stream)), 
+                blocks, ArrayProfile.NoCache);
+            stream.Seek(4 + (blocks * 4), SeekOrigin.Begin);
+            
+            // create the mapped blocks array.
+            var blocksSize = (stream.Length - stream.Position) / 4;
+            _blocks = ArrayBase<uint>.CreateFor(new MemoryMapStream(new LimitedStream(stream)), 
+                blocksSize, ArrayProfile.NoCache);
         }
+
+        public uint Resolution => _resolution;
 
         public uint this[int x, int y]
         {
             get
             {
-                var i = (x * HeatMap.Resolution) + y;
-                return _data[i];
+                var pos = (x * _resolution) + y;
+                var block = pos / BlockSize;
+                var blockPointer = _blockPointers[block];
+                if (blockPointer == NoBlock) return 0;
+
+                var blockOffset = pos - (block * BlockSize);
+                return _blocks[blockPointer + blockOffset];
             }
             set
             {
-                var i = (x * HeatMap.Resolution) + y;
-                _data[i] = value;
-            }
-        }
+                var pos = (x * _resolution) + y;
+                var block = pos / BlockSize;
+                var blockPointer = _blockPointers[block];
+                if (blockPointer == NoBlock)
+                {
+                    if (value == 0) return;
 
-        internal static long TileSizeInBytes(uint resolution)
-        {
-            return 4 + 8 + 4 + (resolution * resolution * 4);
+                    blockPointer = (uint)_blocks.Length;
+                    _blocks.Resize(_blocks.Length + BlockSize);
+                    for (var i = 0; i < BlockSize; i++)
+                    {
+                        _blocks[blockPointer + i] = 0;
+                    }
+
+                    _blockPointers[block] = blockPointer;
+                }
+                
+                var blockOffset = pos - (block * BlockSize);
+                _blocks[blockPointer + blockOffset] = value;
+            }
         }
     }
 }

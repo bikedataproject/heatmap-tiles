@@ -1,8 +1,7 @@
 using System.IO;
 using Xunit;
-using HeatMap.Tiles.Tiles;
 
-namespace HeatMap.Tiles.Test.Tiles
+namespace HeatMap.Tiles.Test
 {
     public class HeatMapTileTests
     {

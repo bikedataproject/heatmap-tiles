@@ -10,5 +10,5 @@
     <PackageReference Include="Reminiscence" Version="1.4.0-pre003" />
     <PackageReference Include="NetTopologySuite.IO.VectorTiles.Mapbox" Version="0.0.13" />
   </ItemGroup>
-  
+    
 </Project>

@@ -1,15 +1,11 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
-using HeatMap.Tiles.Tilers;
-using NetTopologySuite.Features;
-using NetTopologySuite.Geometries;
-using NetTopologySuite.IO.VectorTiles;
-using NetTopologySuite.IO.VectorTiles.Tiles;
+using HeatMap.Tiles.Diffs;
 
 namespace HeatMap.Tiles
 {
+    /// <summary>
+    /// Contains extensions methods for the heat map.
+    /// </summary>
     public static class HeatMapExtensions
     {
         /// <summary>
@@ -19,253 +15,80 @@ namespace HeatMap.Tiles
         public delegate uint ToResolution(int zoom);
         
         /// <summary>
-        /// Adds a new feature to the heatmap.
+        /// Applies the given diff by writing it to the heat map.
         /// </summary>
-        /// <param name="heatMap">The heatmap.</param>
-        /// <param name="geometry">The geometry.</param>
-        /// <param name="cost">The cost.</param>
-        public static IEnumerable<(uint x, uint y)> Add(this HeatMap heatMap, Geometry geometry, uint cost = 1)
+        /// <param name="heatMap">The heat map.</param>
+        /// <param name="diff">The diff.</param>
+        /// <param name="minZoom">The minimum zoom level.</param>
+        /// <param name="toResolution">The resolution function.</param>
+        public static void ApplyDiff(this HeatMap heatMap, HeatMapDiff diff, int minZoom = 0,
+            ToResolution toResolution = null)
         {
-            if (!(geometry is LineString ls)) yield break;
-
-            foreach (var tileId in ls.Tiles(heatMap.Zoom))
+            while (true)
             {
-                HeatMapTile? heatMapTile = null;
-                var tilePolygon = TileStatic.ToPolygon(heatMap.Zoom, tileId);
-                
-                var hasWritten = false;
-                try
+                // create next diff when the minimum zoom has been been reached yet.
+                HeatMapDiff nextDiff = null;
+                if (diff.Zoom > minZoom)
                 {
-                    foreach (var segment in tilePolygon.Cut(ls))
-                    {
-                        heatMapTile ??= heatMap.Get(tileId);
-                        var written =  heatMapTile.Add(tileId, segment, cost);
-                        hasWritten |= written;
-                    }
-                }
-                catch (Exception e)
-                {
-                                
+                    nextDiff = new HeatMapDiff(diff.Zoom - 1, toResolution?.Invoke(diff.Zoom - 1) ?? 1024);
                 }
 
-                if (hasWritten)
+                // write all data in this diff.
+                foreach (var tile in diff.EnumerateTilesAt(diff.Zoom))
                 {
-                    yield return TileStatic.ToTile(heatMap.Zoom, tileId);
+                    heatMap.ApplyDiff(diff, tile, nextDiff);
                 }
+                
+                if (nextDiff == null) break;
+                diff = nextDiff;
             }
         }
-        
+
         /// <summary>
-        /// Adds a new feature to the heatmap.
+        /// Adds the data in the diff to the given heat map and downscales the same data to the next diff.
         /// </summary>
-        /// <param name="heatMap">The heatmap.</param>
-        /// <param name="feature">The feature.</param>
-        /// <param name="cost">The cost.</param>
-        public static void Add(this HeatMap heatMap, IFeature feature, uint cost = 1)
+        /// <param name="heatMap">The heat map to add to.</param>
+        /// <param name="diff">The diff to apply.</param>
+        /// <param name="tileId">The tile in the diff to apply.</param>
+        /// <param name="nextDiff">The next diff to downscale data into.</param>
+        private static void ApplyDiff(this HeatMap heatMap, HeatMapDiff diff, uint tileId, HeatMapDiff nextDiff)
         {
-            heatMap.Add(feature.Geometry, cost);
-        }
+            if (diff.Zoom - 1 != nextDiff.Zoom) throw new NotSupportedException("Only steps of one zoom level are supported.");
 
-        public static IEnumerable<VectorTile> ToVectorTiles(this HeatMap tree, int minZoom, int maxZoom, 
-            ToResolution? toResolution = null, Func<(uint x, uint y, int zoom), bool>? tileFilter = null)
-        {
-            var doneTiles = new HashSet<(uint x, uint y, int zoom)>();
-            foreach (var tileId1 in tree.EnumerateTilesAt(maxZoom))
-            {
-                var z = maxZoom;
-                var currentTileId = tileId1;
-                while (z >= minZoom)
-                {
-                    var (x, y) = TileStatic.ToTile(z, currentTileId);
-                    var tile = (x, y, z);
-
-                    var tileDone = false;
-                    if (z < maxZoom)
-                    {
-                        if (doneTiles.Contains(tile)) tileDone = true;
-                    }
-                    if (!tileDone && tileFilter != null)
-                    {
-                        if (!tileFilter(tile)) tileDone = true;;
-                    }
-
-                    if (!tileDone)
-                    {
-                        var resolution = toResolution?.Invoke(z) ?? 256;
-                        if (!tree.TryGetVectorTile(z, currentTileId, resolution, out var vectorTile)) continue;
-
-                        yield return vectorTile;
-
-                        if (z < maxZoom) doneTiles.Add(tile);
-                    }
-
-                    var nextZoom = z - 1;
-                    currentTileId = TileStatic.ToLocalId((x, y, z).ParentTileFor(nextZoom), nextZoom);
-                    z = nextZoom;
-                }
-            }
+            // get tile coordinates.
+            var tile = TileStatic.ToTile(diff.Zoom, tileId);
             
+            // get heat map tile.
+            var heatMapTile = heatMap[tile.x, tile.y, diff.Zoom];
+            if (heatMapTile.Resolution != diff.Resolution) throw new NotSupportedException("Resolutions don't match.");
             
-            // for (var z = minZoom; z <= maxZoom; z++)
-            // {
-            //     var resolution = toResolution?.Invoke(z) ?? 256;
-            //     foreach (var tileId in tree.EnumerateTilesAt(z))
-            //     {
-            //         if (tileFilter != null)
-            //         {
-            //             var (x, y) = TileStatic.ToTile(z, tileId);
-            //             if (!tileFilter((x, y, z))) continue;
-            //         }
-            //         
-            //         if (!tree.TryGetVectorTile(z, tileId, resolution, out var vectorTile)) continue;
-            //         
-            //         yield return vectorTile;
-            //     }
-            // }
-        }
-
-        public static Func<(uint x, uint y, int zoom), bool> ToTileFilter(this HashSet<(uint x, uint y)> tiles,
-            int zoom)
-        {
-            bool IsModified((uint x, uint y, int zoom) tile)
+            // get parent tile.
+            var parentTile = (tile.x, tile.y, diff.Zoom).ParentTileFor(nextDiff.Zoom);
+            var parentTileId = TileStatic.ToLocalId(parentTile, nextDiff.Zoom);
+            
+            // get the top left of the tile in the diff.
+            var (xTile, yTile, _) = diff.GetTilePosition(diff.Zoom, tileId);
+            
+            // get the top left of the tile in the next diff.
+            var (xTileNext, yTileNext, _) = nextDiff.GetTilePosition(nextDiff.Zoom, parentTileId);
+            xTileNext += (tile.x - (parentTile.x * 2)) * nextDiff.Resolution;
+            yTileNext += (tile.y - (parentTile.y * 2)) * nextDiff.Resolution;
+            
+            // get all data for the given tile and add it to the heat map.
+            // downscale while doing this by writing to the next diff.
+            var scale = diff.Resolution / nextDiff.Resolution * 2;
+            for (var i= 0; i < heatMapTile.Resolution; i++)
+            for (var j= 0; j < heatMapTile.Resolution; j++)
             {
-                if (tile.zoom == zoom)
-                {
-                    return tiles.Contains((tile.x, tile.y));
-                }
-
-                if (tile.zoom < zoom)
-                {
-                    var subtiles = TileStatic.SubTilesFor(tile, zoom);
-                    foreach (var subtile in subtiles)
-                    {
-                        if (tiles.Contains(subtile)) return true;
-                    }
-                }
-
-                return false;
-            }
-
-            return IsModified;
-        }
-
-        internal static IEnumerable<uint> EnumerateTilesAt(this HeatMap heatMap, int zoom)
-        {
-            HashSet<uint> tiles = null;
-            foreach (var heatMapTileId in heatMap)
-            {
-                if (heatMap.Zoom == zoom)
-                {
-                    yield return heatMapTileId;
-                    continue;
-                }
-
-                var tile = TileStatic.ToTile(heatMap.Zoom, heatMapTileId);
-                if (zoom < heatMap.Zoom)
-                {
-                    tiles ??= new HashSet<uint>();
-                    var parent = TileStatic.ParentTileFor((tile.x, tile.y, heatMap.Zoom), zoom);
-                    var parentId  =TileStatic.ToLocalId(parent, zoom);
-                    if (tiles.Contains(parentId)) continue;
-                    
-                    yield return parentId;
-                    tiles.Add(parentId);
-                }
-                else
-                {
-                    foreach (var subTile in (tile.x, tile.y, heatMap.Zoom).SubTilesFor(zoom))
-                    {
-                        yield return TileStatic.ToLocalId(subTile, zoom);
-                    } 
-                }
-            }
-        }
-
-        internal static bool TryGetVectorTile(this HeatMap heatMap, int zoom, uint tileId, uint resolution,
-            out VectorTile vectorTile)
-        {
-            var tgt = new TileGeometryTransform(zoom, tileId, resolution);
-
-            var tile = TileStatic.ToTile(zoom, tileId);
-            vectorTile = new VectorTile()
-            {
-                TileId = new Tile((int)tile.x, (int)tile.y, zoom).Id,
-                Layers = { new Layer()
-                {
-                    Name = "heatmap"
-                }}
-            };
-
-            foreach (var (x, y, value) in heatMap.GetValues(zoom, tileId, resolution))
-            {
+                var value = diff[xTile + i, yTile + j];
                 if (value == 0) continue;
-                
-                var coordinate = tgt.TransformTo(x, y);
-                vectorTile.Layers[0].Features.Add(new Feature(
-                    new Point(new Coordinate(coordinate.longitude, coordinate.latitude)), 
-                    new AttributesTable {{"cost", value}} ));
+
+                heatMapTile[i, j] += value;
+
+                var iScaled = i / scale;
+                var jScaled = j / scale;
+                nextDiff[xTileNext + iScaled, yTileNext + jScaled] += value;
             }
-
-            if (vectorTile.Layers[0].Features.Count == 0)
-            {
-                vectorTile = null;
-                return false;
-            }
-
-            return true;
-        }
-        
-        public static IEnumerable<(int x, int y, uint value)> GetValues(this HeatMap heatMap, int zoom, uint tileId, uint resolution = 256)
-        {
-            var (xTile, yTile, scaledResolution) = heatMap.GetTilePosition(zoom, tileId);
-
-            if (scaledResolution < resolution) throw new NotSupportedException("Upscaling of heatmap not supported.");
-
-            
-            if (scaledResolution > resolution)
-            {
-                var factor = scaledResolution / resolution;
-                
-                for (var x = 0; x < resolution; x++)
-                for (var y = 0; y < resolution; y++)
-                {
-                    var xScaled = x * factor;
-                    var yScaled = y * factor;
-                    
-                    var count = heatMap.SumRange(xTile + xScaled, yTile + yScaled, factor);
-                    
-                    // var count = 0U;
-                    // for (var dx = 0; dx < factor; dx++)
-                    // for (var dy = 0; dy < factor; dy++)
-                    // {
-                    //     count += heatMap[xTile + xScaled + dx, yTile + yScaled + dy];
-                    // }
-                    if (count != 0) yield return (x, y, count);
-                }
-                yield break;
-            }
-            
-            for (var x = 0; x < resolution; x++)
-            for (var y = 0; y < resolution; y++)
-            {
-                var count = heatMap[xTile + x, yTile + y];
-                if (count != 0) yield return (x, y, count);
-            }
-        }
-
-        internal static (long x, long y, long resolution) GetTilePosition(this HeatMap heatMap, int zoom, uint tileId)
-        {
-            if (zoom > heatMap.Zoom) throw new NotSupportedException("Upscaling of heatmap not supported.");
-            
-            uint factor = 1;
-            var tile = TileStatic.ToTile(zoom, tileId);
-            if (zoom < heatMap.Zoom)
-            {
-                factor = (uint)(1 << (int)(heatMap.Zoom - zoom));
-                tile = (tile.x * factor, tile.y * factor);
-            }
-
-            return ((long)tile.x * heatMap.Resolution, (long)tile.y * heatMap.Resolution,  heatMap.Resolution * factor);
         }
     }
 }

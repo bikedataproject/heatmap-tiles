@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using HeatMap.Tiles.Diffs;
 using Microsoft.Extensions.Configuration;
 using NetTopologySuite.IO.VectorTiles.Mapbox;
 using Npgsql;
@@ -80,13 +81,13 @@ namespace HeatMap.Tiles.Service
                 try
                 {
                     Log.Verbose($"Updating tiles for [{earliest.Value},{earliestAndMax}[");
-                    HeatMap heatMap = null;
+                    HeatMapDiff heatMapDiff = null;
                     var contributionsCount = 0;
                     await foreach (var (createdAt, geometry) in cn.GetDataForTimeWindow(earliest.Value, earliestAndMax))
                     {
                         // add to heatmap and keep modified tiles.
-                        heatMap ??= OpenOrCreateHeatMap(heatMapFile);
-                        modifiedTiles.UnionWith(heatMap.Add(geometry));
+                        heatMapDiff ??= OpenOrCreateHeatMap(heatMapFile);
+                        modifiedTiles.UnionWith(heatMapDiff.Add(geometry));
                         contributionsCount++;
                         if (contributionsCount % 100 == 0) Log.Verbose($"Added {contributionsCount}...");
 
@@ -100,15 +101,15 @@ namespace HeatMap.Tiles.Service
                     state ??= new State();
                     state.TimeStamp = earliestAndMax;
 
-                    if (heatMap != null)
+                    if (heatMapDiff != null)
                     {
                         // update all modified tiles.
-                        var tree = heatMap.ToVectorTiles(MinZoom, MaxZoom, i =>
+                        var tree = heatMapDiff.ToVectorTiles(MinZoom, MaxZoom, i =>
                             {
                                 if (i == 14) return Resolution;
                                 return Resolution / 2;
                             },
-                            modifiedTiles.ToTileFilter(heatMap.Zoom));
+                            modifiedTiles.ToTileFilter(heatMapDiff.Zoom));
                         tree = tree.Select(x =>
                         {
                             var tile = new NetTopologySuite.IO.VectorTiles.Tiles.Tile(x.TileId);
@@ -143,14 +144,14 @@ namespace HeatMap.Tiles.Service
             }
         }
 
-        private static HeatMap OpenOrCreateHeatMap(string heatMapFile)
+        private static HeatMapDiff OpenOrCreateHeatMap(string heatMapFile)
         {
             if (File.Exists(heatMapFile))
             {
-                return new HeatMap(File.Open(heatMapFile, FileMode.Open));
+                return new HeatMapDiff(File.Open(heatMapFile, FileMode.Open));
             }
             
-            return new HeatMap(File.Open(heatMapFile, FileMode.Create), HeatMapZoom, Resolution);
+            return new HeatMapDiff(File.Open(heatMapFile, FileMode.Create), HeatMapZoom, Resolution);
         }
 
         private static void EnableLogging(IConfigurationRoot config)

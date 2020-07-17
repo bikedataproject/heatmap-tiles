@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HeatMap.Tiles.Diffs;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.Operation.Overlay;
 
@@ -7,21 +8,21 @@ namespace HeatMap.Tiles.Tilers
 {
     internal static class LineStringTiler
     {
-        public static bool Add(this HeatMapTile heatMapTile, uint tileId, LineString lineString, uint cost = 1)
+        public static bool Add(this HeatMapDiffTile heatMapDiffTile, uint tileId, LineString lineString, uint cost = 1)
         {
             var hasWritten = false;
             void Draw(int x, int y)
             {
                 if (x < 0) return;
                 if (y < 0) return;
-                if (x >= heatMapTile.HeatMap.Resolution) return;
-                if (y >= heatMapTile.HeatMap.Resolution) return;
+                if (x >= heatMapDiffTile.HeatMapDiff.Resolution) return;
+                if (y >= heatMapDiffTile.HeatMapDiff.Resolution) return;
 
-                heatMapTile[x, y] += cost;
+                heatMapDiffTile[x, y] += cost;
                 hasWritten = true;
             }
 
-            var tgt = new TileGeometryTransform(heatMapTile.HeatMap.Zoom, tileId, heatMapTile.HeatMap.Resolution);
+            var tgt = new TileGeometryTransform(heatMapDiffTile.HeatMapDiff.Zoom, tileId, heatMapDiffTile.HeatMapDiff.Resolution);
             int currentX = 0, currentY = 0;
             for (var c = 0; c < lineString.Coordinates.Length; c++)
             {
