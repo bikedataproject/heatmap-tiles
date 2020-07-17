@@ -443,3 +443,4 @@ MigrationBackup/
 
 # vector tiles.
 **/*.mvt
+**/*.heatmap

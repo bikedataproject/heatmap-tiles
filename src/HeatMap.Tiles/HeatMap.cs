@@ -40,7 +40,22 @@ namespace HeatMap.Tiles
                 return new HeatMapTile(stream, _resolution);
             }
         }
-        
+
+        public bool TryGetTile((uint x, uint y, int z) tile, out HeatMapTile heatMapTile)
+        {
+            if (_tiles.TryGetValue(tile, out heatMapTile)) return true;
+            
+            var file = FileName(tile.x, tile.y, tile.z);
+            if (File.Exists(file))
+            {
+                heatMapTile = this[tile.x, tile.y, tile.z];
+                return true;
+            }
+
+            heatMapTile = null;
+            return false;
+        }
+
         public HeatMapTile this[uint x, uint y, int z]
         {
             get

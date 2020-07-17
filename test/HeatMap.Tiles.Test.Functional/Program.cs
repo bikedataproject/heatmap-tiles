@@ -15,13 +15,14 @@ namespace HeatMap.Tiles.Test.Functional
     {
         static async Task Main(string[] args)
         {
-            //
+            // load features.
             var features = (new GeoJsonReader()).Read<FeatureCollection>(
-            //     //File.ReadAllText(@"/data/ANYWAYS Dropbox/data/bike-data-project/test-belgium.geojson"));
-                 File.ReadAllText(@"/data/ANYWAYS Dropbox/data/bike-data-project/temp-small.geojson"));
+                 File.ReadAllText(@"/data/ANYWAYS Dropbox/data/bike-data-project/test.geojson"));
+                 //File.ReadAllText(@"/data/ANYWAYS Dropbox/data/bike-data-project/temp-small.geojson"));
             var geometries = features.Select(x => x.Geometry);
             
             // create the diff.
+            Console.WriteLine("Creating the diff...");
             var heatMapDiff = new HeatMapDiff(14, 1024);
             foreach (var geometry in geometries)
             {
@@ -29,8 +30,23 @@ namespace HeatMap.Tiles.Test.Functional
             }
             
             // apply the diff to the heatmap.
+            Console.WriteLine("Applying the diff...");
             var heatMap = new HeatMap("heatmap");
-            heatMap.ApplyDiff(heatMapDiff, 0, i => 1024);
+            var tiles = heatMap.ApplyDiff(heatMapDiff, 0, i => 1024).ToList();
+            
+            // build & write vector tiles.
+            var vectorTiles = heatMap.ToVectorTiles(tiles);
+            vectorTiles = vectorTiles.Select(x =>
+            {
+                var tile = new NetTopologySuite.IO.VectorTiles.Tiles.Tile(x.TileId);
+                Console.WriteLine($"Writing tile {tile}...");
+            
+                return x;
+            });
+            
+            // write the tiles to disk as mvt.
+            Console.WriteLine("Writing tiles...");
+            vectorTiles.Write(@"/data/work/anyways/projects/werkvennootschap/heatmap-experiment/tiles");
           
             // HeatMapDiff heatMapDiff;
             // var resolution = 512U;

@@ -8,21 +8,23 @@ namespace HeatMap.Tiles.Tilers
 {
     internal static class LineStringTiler
     {
-        public static bool Add(this HeatMapDiffTile heatMapDiffTile, uint tileId, LineString lineString, uint cost = 1)
+        public static bool Add(this HeatMapDiff heatMapDiff, uint tileId, LineString lineString, uint cost = 1)
         {
+            var (tileXOffset, tileYOffset) = heatMapDiff.GetTilePosition(tileId);
+            
             var hasWritten = false;
             void Draw(int x, int y)
             {
                 if (x < 0) return;
                 if (y < 0) return;
-                if (x >= heatMapDiffTile.HeatMapDiff.Resolution) return;
-                if (y >= heatMapDiffTile.HeatMapDiff.Resolution) return;
+                if (x >= heatMapDiff.Resolution) return;
+                if (y >= heatMapDiff.Resolution) return;
 
-                heatMapDiffTile[x, y] += cost;
+                heatMapDiff[tileXOffset + x, tileYOffset + y] += cost;
                 hasWritten = true;
             }
 
-            var tgt = new TileGeometryTransform(heatMapDiffTile.HeatMapDiff.Zoom, tileId, heatMapDiffTile.HeatMapDiff.Resolution);
+            var tgt = new TileGeometryTransform(heatMapDiff.Zoom, tileId, heatMapDiff.Resolution);
             int currentX = 0, currentY = 0;
             for (var c = 0; c < lineString.Coordinates.Length; c++)
             {

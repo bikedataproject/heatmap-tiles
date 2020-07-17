@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using HeatMap.Tiles.IO;
 using Reminiscence.Arrays;
@@ -64,6 +65,26 @@ namespace HeatMap.Tiles
         }
 
         public uint Resolution => _resolution;
+
+        public IEnumerable<(int x, int y, uint value)> GetValues()
+        {
+            for (var b = 0; b < _blockPointers.Length; b++)
+            {
+                var blockPointer = _blockPointers[b];
+                if (blockPointer == NoBlock) continue;
+
+                for (var o = 0; o < BlockSize; o++)
+                {
+                    var pos = blockPointer + o;
+                    var val = _blocks[pos];
+                    if (val == 0) continue;
+
+                    var x = (int)(pos / this.Resolution);
+                    var y = (int)(pos - (x * Resolution));
+                    yield return (x, y, val);
+                }
+            }
+        }
 
         public uint this[int x, int y]
         {
