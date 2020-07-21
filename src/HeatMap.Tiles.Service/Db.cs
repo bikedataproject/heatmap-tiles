@@ -35,7 +35,7 @@ namespace HeatMap.Tiles.Service
             DateTimeOffset from, DateTimeOffset to)
         {
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = "select created_at, points_geom from contributions where created_at >= @from and created_at < @to order by created_at asc";
+            cmd.CommandText = "select created_at, points_geom from contributions where created_at > @from and created_at <= @to order by created_at asc";
             cmd.Parameters.AddWithValue("from", from);
             cmd.Parameters.AddWithValue("to", to);
 

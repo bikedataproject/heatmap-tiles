@@ -1,9 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 
 namespace HeatMap.Tiles
 {
-    public class HeatMap
+    public class HeatMap : IDisposable
     {
         private readonly string _path;
         private readonly uint _resolution;
@@ -65,6 +66,14 @@ namespace HeatMap.Tiles
                 tile = GetOrCreate(x, y, z);
                 _tiles[(x, y, z)] = tile;
                 return tile;
+            }
+        }
+
+        public void Dispose()
+        {
+            foreach (var (_, tile) in _tiles)
+            {
+                tile.Dispose();
             }
         }
     }

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using HeatMap.Tiles.Diffs;
 using Microsoft.Extensions.Configuration;
@@ -16,7 +17,7 @@ namespace HeatMap.Tiles.Service
         private const string StateFileName = "state.json";
         private const uint Resolution = 512;
         private const int HeatMapZoom = 14;
-        private const int MaxDays = 7;
+        private const int MaxDays = 1;
         
         static async Task Main(string[] args)
         {
@@ -29,8 +30,27 @@ namespace HeatMap.Tiles.Service
             var connectionString = config["connectionString"];
             var path = config["path"];
             var tiles = config["tiles"];
-
-            await UpdateHeatMap(connectionString, path, tiles);
+            
+            var startTicks = DateTime.Now.Ticks;
+            while (true)
+            {
+                // try update and make sure to minimum 1 sec passed.
+                var startUpdate = DateTime.Now.Ticks;   
+                await UpdateHeatMap(connectionString, path, tiles);
+                var updateSpan = new TimeSpan(DateTime.Now.Ticks - startUpdate);
+                var seconds = 1000 - updateSpan.TotalMilliseconds;
+                if (seconds > 0)
+                {
+                    Thread.Sleep(1000);
+                }
+                
+                // if almost a minute passed, stop.
+                var time = new TimeSpan(DateTime.Now.Ticks - startTicks);
+                if (time.TotalSeconds > 45)
+                {
+                    break;
+                }
+            }
         }
 
         private static async Task UpdateHeatMap(string connectionString, string path, string tilesPath)
@@ -84,51 +104,47 @@ namespace HeatMap.Tiles.Service
                 {
                     Log.Verbose($"Updating tiles for [{earliest.Value},{earliestAndMax}[");
                     var heatMapDiff = new HeatMapDiff(HeatMapZoom, Resolution);
-                    var heatMap = new HeatMap(heatMapPath, Resolution);
-                    var modifiedTiles = new HashSet<(uint x, uint y, int z)>();
                     var contributionsCount = 0;
-                    var contributionsInDiff = 0;
+                    var tooManyContributions = false;
                     await foreach (var (createdAt, geometry) in cn.GetDataForTimeWindow(earliest.Value, earliestAndMax))
                     {
-                        // add to heatmap and keep modified tiles.
+                        // apply diff earlier if there are too many contributions.
+                        if (contributionsCount >= 200 && state != null &&
+                            state.TimeStamp != createdAt)
+                        {
+                            Log.Verbose($"Stopped at {state.TimeStamp}, too many contributions...");
+                            tooManyContributions = true;
+                            break;
+                        }
+                        
+                        // add to heat map and keep modified tiles.
                         heatMapDiff.Add(geometry);
                         contributionsCount++;
-                        contributionsInDiff++;
                         if (contributionsCount % 100 == 0) Log.Verbose($"Added {contributionsCount}...");
-                        
-                        // apply diff earlier if there are too many contributions.
-                        if (contributionsInDiff >= 500)
-                        {
-                            Log.Verbose($"Applying diff early...");
-                            modifiedTiles.UnionWith(heatMap.ApplyDiff(heatMapDiff, toResolution: _ => Resolution));
-                            heatMapDiff = new HeatMapDiff(HeatMapZoom, Resolution);
-                            contributionsInDiff = 0;
-                        }
 
                         // update state.
                         state ??= new State();
                         state.TimeStamp = createdAt;
                     }
                     Log.Verbose($"Added {contributionsCount} in total.");
-                    
-                    // apply diff if some are left unapplied.
-                    if (contributionsInDiff > 0)
-                    {
-                        Log.Verbose($"Applying diff...");
-                        modifiedTiles.UnionWith(heatMap.ApplyDiff(heatMapDiff, toResolution: _ => Resolution));
-                    }
 
                     // update state, make sure it's at least earliest and max.
-                    state ??= new State();
-                    state.TimeStamp = earliestAndMax;
+                    // in case of no contributions make sure to move on.
+                    if (!tooManyContributions) state = new State {TimeStamp = earliestAndMax};
 
                     if (contributionsCount > 0)
                     {
+                        using var heatMap = new HeatMap(heatMapPath, Resolution);
+                        
+                        Log.Verbose($"Applying diff...");
+                        var modifiedTiles = new HashSet<(uint x, uint y, int z)>();
+                        modifiedTiles.UnionWith(heatMap.ApplyDiff(heatMapDiff, toResolution: _ => Resolution));
+                        
                         // build vector tiles.
                         // log when tiles are written.
                         var vectorTiles = heatMap.ToVectorTiles(modifiedTiles.Select(tile =>
                         {
-                            Log.Verbose($"Writing tile {tile.z}/{tile.x}/{tile.y}.mvt...");
+                            //Log.Verbose($"Writing tile {tile.z}/{tile.x}/{tile.y}.mvt...");
                     
                             return tile;
                         }));
@@ -136,6 +152,7 @@ namespace HeatMap.Tiles.Service
                         // write the tiles to disk as mvt.
                         Log.Verbose("Writing tiles...");
                         vectorTiles.Write(tilesPath);
+                        Log.Verbose("Tiles written!");
                     }
                 }
                 catch (Exception e)

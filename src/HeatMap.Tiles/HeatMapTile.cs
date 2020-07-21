@@ -11,18 +11,20 @@ namespace HeatMap.Tiles
     /// <summary>
     /// A tile in a heat map.
     /// </summary>
-    public class HeatMapTile
+    public class HeatMapTile : IDisposable
     {
         private const int BlockSize = 64;
         private const uint NoBlock = uint.MaxValue;
         private readonly ArrayBase<uint> _blockPointers;
         private readonly ArrayBase<uint> _blocks;
+        private readonly Stream _stream;
         private readonly uint _resolution;
 
         public HeatMapTile(Stream stream, uint resolution)
         {
             if (stream.Position != stream.Length) throw new Exception("This is not a new tile.");
             _resolution = resolution;
+            _stream = stream;
             
             var length = _resolution * _resolution;
             var blocks = length / BlockSize;
@@ -49,6 +51,7 @@ namespace HeatMap.Tiles
         public HeatMapTile(Stream stream)
         {
             if (stream.Position == stream.Length) throw new Exception("No data in stream.");
+            _stream = stream;
 
             // read resolution.
             _resolution = stream.ReadUInt32();
@@ -123,6 +126,13 @@ namespace HeatMap.Tiles
                 var blockOffset = pos - (block * BlockSize);
                 _blocks[blockPointer + blockOffset] = value;
             }
+        }
+
+        public void Dispose()
+        {
+            _stream.Dispose();
+            _blockPointers?.Dispose();
+            _blocks?.Dispose();
         }
     }
 }
