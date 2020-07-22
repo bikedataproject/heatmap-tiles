@@ -59,7 +59,7 @@ namespace HeatMap.Tiles
                 HeatMapDiff nextDiff = null;
                 if (diff.Zoom > minZoom)
                 {
-                    nextDiff = new HeatMapDiff(diff.Zoom - 1, toResolution?.Invoke(diff.Zoom - 1) ?? 1024);
+                    nextDiff = diff.CreateOneLevelUp(toResolution);
                 }
 
                 // write all data in this diff.

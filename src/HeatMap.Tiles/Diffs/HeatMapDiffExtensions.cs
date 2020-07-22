@@ -8,12 +8,28 @@ namespace HeatMap.Tiles.Diffs
     public static class HeatMapDiffExtensions
     {
         /// <summary>
-        /// Adds a new feature to the heatmap.
+        /// Adds new geometries to the heat map.
         /// </summary>
-        /// <param name="heatMapDiff">The heatmap.</param>
+        /// <param name="heatMapDiff">The heat map.</param>
+        /// <param name="geometries">The geometries.</param>
+        /// <param name="cost">The cost.</param>
+        /// <param name="includeTile">A function to allow inclusion of only some tiles.</param>
+        public static void Add(this HeatMapDiff heatMapDiff, IEnumerable<Geometry> geometries, uint cost = 1, Func<uint, bool> includeTile = null)
+        {
+            foreach (var geometry in geometries)
+            {
+                heatMapDiff.Add(geometry, cost, includeTile);
+            }
+        }
+        
+        /// <summary>
+        /// Adds a new feature to the heat map.
+        /// </summary>
+        /// <param name="heatMapDiff">The heat map.</param>
         /// <param name="geometry">The geometry.</param>
         /// <param name="cost">The cost.</param>
-        public static void Add(this HeatMapDiff heatMapDiff, Geometry geometry, uint cost = 1)
+        /// <param name="includeTile">A function to allow inclusion of only some tiles.</param>
+        public static void Add(this HeatMapDiff heatMapDiff, Geometry geometry, uint cost = 1, Func<uint, bool> includeTile = null)
         {
             if (!(geometry is LineString ls)) return;
 
@@ -27,21 +43,26 @@ namespace HeatMap.Tiles.Diffs
                 heatMapDiff[x, y] += cost;
             }
 
-            var previous = heatMapDiff.ToHeatMapCoordinates(ls.Coordinates[0]);
+            var previous = heatMapDiff.ToHeatMapCoordinates(ls.Coordinates[0], includeTile);
             for (var c = 1; c < ls.Coordinates.Length; c++)
             {
-                var current = heatMapDiff.ToHeatMapCoordinates(ls.Coordinates[c]);
-                
-                Bresenhams.Draw(previous.x, previous.y, current.x, current.y, Draw);
+                var currentResult = heatMapDiff.ToHeatMapCoordinates(ls.Coordinates[c], includeTile);
+                if (currentResult == null) continue;
+                var current = currentResult.Value;
+
+                if (previous.HasValue) Bresenhams.Draw(previous.Value.x, previous.Value.y, current.x, current.y, Draw);
 
                 previous = current;
             }
         }
 
-        internal static (long x, long y) ToHeatMapCoordinates(this HeatMapDiff heatMapDiff, Coordinate coordinate)
+        internal static (long x, long y)? ToHeatMapCoordinates(this HeatMapDiff heatMapDiff, Coordinate coordinate, 
+            Func<uint, bool> includeTile = null)
         {
             var localTile = TileStatic.ToLocalTileCoordinates(heatMapDiff.Zoom, (coordinate.X, coordinate.Y),
                 (int)heatMapDiff.Resolution);
+            if (includeTile != null && !includeTile(localTile.tileId)) return null;
+            
             var tile = TileStatic.ToTile(heatMapDiff.Zoom, localTile.tileId);
             return (tile.x * heatMapDiff.Resolution + localTile.x,
                 tile.y * heatMapDiff.Resolution + localTile.y);

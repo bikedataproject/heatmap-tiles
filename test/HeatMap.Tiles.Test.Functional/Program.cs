@@ -3,54 +3,54 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using HeatMap.Tiles.Diffs;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using NetTopologySuite.Features;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
 using NetTopologySuite.IO.VectorTiles.Mapbox;
 using Npgsql;
+using Serilog;
 
 namespace HeatMap.Tiles.Test.Functional
 {
     class Program
     {
         static async Task Main(string[] args)
-        {
-            // load features.
-            var features = (new GeoJsonReader()).Read<FeatureCollection>(
-                 File.ReadAllText(@"/data/ANYWAYS Dropbox/data/bike-data-project/test-brussels.geojson"));
-                 //File.ReadAllText(@"/data/ANYWAYS Dropbox/data/bike-data-project/temp-small.geojson"));
-            var geometries = features.Select(x => x.Geometry);
-            //geometries = geometries.Skip(300).Take(100);
+        {            
+            // read configuration.
+            var configuration = new ConfigurationBuilder()
+                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+                .AddUserSecrets<Program>()
+                .Build();
             
-            // create the diff.
-            Console.WriteLine("Creating the diff...");
-            var heatMapDiff = new HeatMapDiff(14, 1024);
-            var g = 0;
-            foreach (var geometry in geometries)
-            {
-                heatMapDiff.Add(geometry);
-                g++;
-                Console.WriteLine($"Added {g} geometries...");
-            }
+            // setup serilog logging (from configuration).
+            Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(configuration)
+                .CreateLogger();
             
-            // apply the diff to the heatmap.
-            Console.WriteLine("Applying the diff...");
-            var heatMap = new HeatMap("heatmap");
-            var tiles = heatMap.ApplyDiff(heatMapDiff, 0, i => 1024);
+            // get database connection.
+            var connectionString = configuration["BikeDataProject:ConnectionString"];
             
-            // build & write vector tiles.
-            var vectorTiles = heatMap.ToVectorTiles(tiles);
-            vectorTiles = vectorTiles.Select(x =>
-            {
-                var tile = new NetTopologySuite.IO.VectorTiles.Tiles.Tile(x.TileId);
-                Console.WriteLine($"Writing tile {tile}...");
+            // setup DI.
+            var serviceProvider = new ServiceCollection()
+                .AddLogging(b =>
+                {
+                    b.AddSerilog();
+                })
+                .AddSingleton<FunctionalTestTask>()
+                .AddSingleton(new FunctionalTestTaskConfiguration()
+                {
+                    ConnectionString = connectionString,
+                    HeatMapPath = configuration["heatmap"],
+                    VectorTilesPath = configuration["vector_tiles"]
+                })
+                .BuildServiceProvider();
             
-                return x;
-            });
-            
-            // write the tiles to disk as mvt.
-            Console.WriteLine("Writing tiles...");
-            vectorTiles.Write(@"/data/work/anyways/projects/werkvennootschap/heatmap-experiment/tiles");
+            //do the actual work here
+            var task = serviceProvider.GetService<FunctionalTestTask>();
+            task.Run();
         }
     }
 }

@@ -69,6 +69,15 @@ namespace HeatMap.Tiles
             }
         }
 
+        public void Unload()
+        {
+            foreach (var (_, tile) in _tiles)
+            {
+                tile.Dispose();
+            }
+            _tiles.Clear();
+        }
+
         public void Dispose()
         {
             foreach (var (_, tile) in _tiles)

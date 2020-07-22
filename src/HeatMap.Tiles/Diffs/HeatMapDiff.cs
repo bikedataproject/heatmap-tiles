@@ -1,5 +1,7 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Reminiscence.Arrays;
 
 namespace HeatMap.Tiles.Diffs
@@ -15,6 +17,7 @@ namespace HeatMap.Tiles.Diffs
         private readonly MemoryArray<uint> _tiles;
 
         private (uint first, uint last)? _range;
+        private long _tilesLength = 0;
 
         /// <summary>
         /// Creates a brand new heat map diff starting at the current stream position.
@@ -35,6 +38,37 @@ namespace HeatMap.Tiles.Diffs
                 _tilePointers[i] = NoTile;
             }
             _tiles = new MemoryArray<uint>(0);
+            _tilesLength = 0;
+            _range = null;
+        }
+
+        private HeatMapDiff _oneLevelUp;
+
+        internal HeatMapDiff CreateOneLevelUp(HeatMapExtensions.ToResolution toResolution = null)
+        {
+            if (_oneLevelUp == null)
+            {
+                _oneLevelUp = new HeatMapDiff(this.Zoom - 1, toResolution?.Invoke(this.Zoom - 1) ?? 1024);
+            }
+            else
+            {
+                _oneLevelUp.Clear();
+            }
+
+            return _oneLevelUp;
+        }
+        
+        public void Clear()
+        {
+            if (_range != null)
+            {
+                for (var tileId = _range.Value.first; tileId <= _range.Value.last; tileId++)
+                {
+                    _tilePointers[tileId] = NoTile;
+                }
+            }
+            //_tiles.Resize(0);
+            _tilesLength = 0;
             _range = null;
         }
 
@@ -87,8 +121,14 @@ namespace HeatMap.Tiles.Diffs
                 {
                     if (value == 0) return;
 
-                    tilePointer = (uint)_tiles.Length;
-                    _tiles.Resize(_tiles.Length + (this.Resolution * this.Resolution));
+                    tilePointer = (uint)_tilesLength;
+                    var newSize = _tilesLength + (this.Resolution * this.Resolution);
+                    if (_tiles.Length < newSize) _tiles.Resize(newSize);
+                    for (var i = tilePointer; i < newSize; i++)
+                    {
+                        _tiles[i] = 0;
+                    }
+                    _tilesLength = newSize;
                     _tilePointers[tile] = tilePointer;
                     UpdateRange(tile);
                     GetTileBlockFor(x, y, out offset);
@@ -96,6 +136,19 @@ namespace HeatMap.Tiles.Diffs
                 
                 _tiles[tilePointer + offset] = value;
             }
+        }
+
+        public void RemoveAll(Func<uint, bool> toRemove)
+        {                    
+            if (_range == null) return;
+            for (var tileId = _range.Value.first; tileId <= _range.Value.last; tileId++)
+            {
+                var tilePointer = _tilePointers[tileId];
+                if (tilePointer == NoTile) continue;
+                
+                if (!toRemove(tileId)) continue;
+                _tilePointers[tileId] = NoTile;
+            }   
         }
 
         public IEnumerator<uint> GetEnumerator()
