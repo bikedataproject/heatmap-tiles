@@ -25,4 +25,4 @@ VOLUME ["/var/app/logs"]
 
 # Set the default command to execute when creating a new container
 WORKDIR /var/app/
-ENTRYPOINT cron -f
+ENTRYPOINT printenv > /etc/environment && cron -f
