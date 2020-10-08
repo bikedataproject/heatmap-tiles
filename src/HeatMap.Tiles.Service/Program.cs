@@ -29,6 +29,8 @@ namespace HeatMap.Tiles.Service
                 try
                 {
                     var connectionString = await File.ReadAllTextAsync(configuration[$"DB"]);
+                    var minUsers = int.Parse(configuration[$"MIN_USERS"]);
+                    var maxContributions = int.Parse(configuration[$"MAX_CONTRIBUTIONS"]);
                     var data = configuration["data"];
                     var output = configuration["output"];
 
@@ -40,7 +42,9 @@ namespace HeatMap.Tiles.Service
                         {
                             DataPath = data,
                             ConnectionString = connectionString,
-                            OutputPath = output
+                            OutputPath = output,
+                            UserThreshold = minUsers,
+                            MaxContributions = maxContributions
                         })
                         .BuildServiceProvider();
 

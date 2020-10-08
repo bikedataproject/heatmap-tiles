@@ -1,0 +1,37 @@
+name: Staging
+
+on:
+  push:
+    branches: [ develop ]
+  pull_request:
+    branches: []
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Prepare NuGet.Config
+      uses: datamonsters/replace-action@v2
+      with:
+        files: 'NuGet.Config.actions'
+        replacements: '%%username%%=xivk,%%token%%=${{ secrets.PACKAGES_SECRET }}'
+    - run: mv NuGet.Config.actions NuGet.Config 
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: 3.1.x
+    - name: Publish project
+      run: dotnet publish -c release
+      working-directory: ./src/HeatMap.Tiles.Service/
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag bikedataproject/heatmap-tiles-service:staging
+      working-directory: ./src/HeatMap.Tiles.Service/
+    - name: Login to Dock Hub
+      run: echo ${{ secrets.DOCKER_HUB_TOKEN }} | docker login -u anywaysopen --password-stdin
+    - name: Publish the image to GitHub packages.
+      run: docker push bikedataproject/heatmap-tiles:staging
+      working-directory: ./src/HeatMap.Tiles.Service/

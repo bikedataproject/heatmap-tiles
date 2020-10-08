@@ -29,7 +29,9 @@ namespace HeatMap.Tiles
         /// <param name="heapMap">The source heat map.</param>
         /// <param name="target">The target heat map.</param>
         /// <param name="tiles">The tiles to copy for.</param>
-        public static void CopyTilesTo(this HeatMap heapMap, HeatMap target, IEnumerable<(uint x, uint y, int z)> tiles)
+        /// <param name="translate">A function to translate values.</param>
+        public static void CopyTilesTo(this HeatMap heapMap, HeatMap target, IEnumerable<(uint x, uint y, int z)> tiles,
+            Func<(uint x, uint y, int z), (int x, int y), uint, uint>? translate = null)
         {
             foreach (var tile in tiles)
             {
@@ -42,7 +44,87 @@ namespace HeatMap.Tiles
                 for (var i = 0; i < targetTile.Resolution; i++)
                 for (var j = 0; j < targetTile.Resolution; j++)
                 {
-                    targetTile[i, j] = sourceTile[i, j];
+                    var v = sourceTile[i, j];
+                    if (translate != null)
+                    {
+                        v = translate(tile, (i, j), v);
+                    }
+                        
+                    targetTile[i, j] = v;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Rewrite the tile tree for the given roots.
+        /// </summary>
+        /// <param name="heatMap">The heat map.</param>
+        /// <param name="tiles">The modified tiles.</param>
+        public static IEnumerable<(uint x, uint y, int z)> RebuildParentTileTree(this HeatMap heatMap, IEnumerable<(uint x, uint y, int z)> tiles)
+        {
+            while (true)
+            {
+                var parentQueue = new HashSet<(uint x, uint y, int z)>();
+
+                foreach (var tile in tiles)
+                {
+                    if (tile.z == 0) continue;
+
+                    var parent = tile.ParentTileFor(tile.z - 1);
+                    parentQueue.Add((parent.x, parent.y, tile.z - 1));
+                }
+
+                if (parentQueue.Count == 0) yield break;
+
+                foreach (var tile in parentQueue)
+                {
+                    heatMap.RebuildTile(tile);
+                    yield return tile;
+                }
+
+                tiles = parentQueue;
+            }
+        }
+
+        /// <summary>
+        /// Rebuilds the given tile from the 4 sub-tiles right below.
+        /// </summary>
+        /// <param name="heatMap">The heat map.</param>
+        /// <param name="tile">The tile.</param>
+        /// <remarks>If there are no sub-tiles found the tile is removed.</remarks>
+        public static void RebuildTile(this HeatMap heatMap, (uint x, uint y, int z) tile)
+        {
+            heatMap.TryRemoveTile(tile);
+            
+            var subTileRange = tile.SubTileRangeFor(tile.z + 1);
+
+            var xMin = subTileRange.topLeft.x;
+            var yMin = subTileRange.topLeft.y;
+
+            for (uint xOffset = 0; xOffset < 2; xOffset++)
+            for (uint yOffset = 0; yOffset < 2; yOffset++)
+            {
+                var subTile = (xMin + xOffset, yMin + yOffset, tile.z + 1);
+                if (!heatMap.TryGetTile(subTile, out var heatMapSubTile)) continue;
+
+                var heatMapTile = heatMap[tile.x, tile.y, tile.z];
+
+                var left = (heatMapTile.Resolution / 2) * xOffset;
+                var top = (heatMapTile.Resolution / 2) * yOffset;
+
+                var scale = heatMapTile.Resolution / heatMapSubTile.Resolution * 2;
+                
+                for (var xl = 0; xl < heatMapSubTile.Resolution; xl++)
+                for (var yl = 0; yl < heatMapSubTile.Resolution; yl++)
+                {
+                    var value = heatMapSubTile[xl, yl];
+                    if (value == 0) continue;
+                    
+                    // calculate parent tile coordinates.
+                    var x = (int)(left + (xl / scale));
+                    var y = (int)(top + (yl / scale));
+
+                    heatMapTile[x, y] += value;
                 }
             }
         }
