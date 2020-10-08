@@ -42,9 +42,9 @@ namespace HeatMap.Tiles.Diffs
             _range = null;
         }
 
-        private HeatMapDiff _oneLevelUp;
+        private HeatMapDiff? _oneLevelUp;
 
-        internal HeatMapDiff CreateOneLevelUp(HeatMapExtensions.ToResolution toResolution = null)
+        internal HeatMapDiff CreateOneLevelUp(HeatMapExtensions.ToResolution? toResolution = null)
         {
             if (_oneLevelUp == null)
             {

@@ -29,7 +29,7 @@ namespace HeatMap.Tiles.Diffs
         /// <param name="geometry">The geometry.</param>
         /// <param name="cost">The cost.</param>
         /// <param name="includeTile">A function to allow inclusion of only some tiles.</param>
-        public static void Add(this HeatMapDiff heatMapDiff, Geometry geometry, uint cost = 1, Func<uint, bool> includeTile = null)
+        public static void Add(this HeatMapDiff heatMapDiff, Geometry geometry, uint cost = 1, Func<uint, bool>? includeTile = null)
         {
             if (!(geometry is LineString ls)) return;
 
@@ -57,7 +57,7 @@ namespace HeatMap.Tiles.Diffs
         }
 
         internal static (long x, long y)? ToHeatMapCoordinates(this HeatMapDiff heatMapDiff, Coordinate coordinate, 
-            Func<uint, bool> includeTile = null)
+            Func<uint, bool>? includeTile = null)
         {
             var localTile = TileStatic.ToLocalTileCoordinates(heatMapDiff.Zoom, (coordinate.X, coordinate.Y),
                 (int)heatMapDiff.Resolution);
