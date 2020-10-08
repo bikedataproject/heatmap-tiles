@@ -33,5 +33,5 @@ jobs:
     - name: Login to Dock Hub
       run: echo ${{ secrets.DOCKER_HUB_TOKEN }} | docker login -u anywaysopen --password-stdin
     - name: Publish the image to GitHub packages.
-      run: docker push bikedataproject/heatmap-tiles:staging
+      run: docker push bikedataproject/heatmap-tiles-service:staging
       working-directory: ./src/HeatMap.Tiles.Service/
