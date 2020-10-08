@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -27,7 +28,7 @@ namespace HeatMap.Tiles.Service
                     .CreateLogger();
                 try
                 {
-                    var connectionString = configuration["connectionString"];
+                    var connectionString = await File.ReadAllTextAsync(configuration[$"DB"]);
                     var data = configuration["data"];
                     var output = configuration["output"];
 

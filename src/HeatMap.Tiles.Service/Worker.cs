@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using HeatMap.Tiles.Diffs;
 using Microsoft.Extensions.Logging;
+using NetTopologySuite.Geometries;
 using NetTopologySuite.IO.VectorTiles.Mapbox;
 using Npgsql;
 using Serilog;
@@ -16,7 +17,7 @@ namespace HeatMap.Tiles.Service
         private const string StateFileName = "state.json";
         private const uint Resolution = 512;
         private const int HeatMapZoom = 14;
-        private const int MaxDays = 1;
+        private const int MaxContributions = 10;
         private readonly ILogger<Worker> _logger;
         private readonly WorkerConfiguration _configuration;
 
@@ -42,10 +43,10 @@ namespace HeatMap.Tiles.Service
             var stateFile = Path.Combine(_configuration.DataPath, StateFileName);
             var heatMapPath = Path.Combine(_configuration.DataPath, "heatmap-cache");           
             var lockFile = Path.Combine(_configuration.DataPath, "heatmap-service.lock");
-            if (LockHelper.IsLocked(lockFile, TimeSpan.TicksPerDay))
-            {
-                return;
-            }
+            // if (LockHelper.IsLocked(lockFile, TimeSpan.TicksPerDay))
+            // {
+            //     return;
+            // }
 
             try
             {
@@ -62,71 +63,50 @@ namespace HeatMap.Tiles.Service
                 cn.TypeMapper.UseNetTopologySuite();
 
                 // get latest.
-                var latest = await cn.GetLatestContributionTimeStamp();
+                var latest = await cn.GetLatestContributionId();
 
                 // check for more recent data.
-                if (state != null && state.TimeStamp >= latest) return; // there is no more recent data.
+                if (state != null && state.LastContributionId >= latest) return; // there is no more recent data.
 
-                // process 1 day max.
-                var earliest = state?.TimeStamp ?? await cn.GetEarliestContributionTimeStamp();
-                if (earliest == null) return; // no data in database.
-                var earliestAndMax = earliest.Value.AddDays(MaxDays);
+                // process n contributions max.
+                state ??= new State()
+                {
+                    LastContributionId = -1
+                };
+                var newLatest = state.LastContributionId + MaxContributions;
 
-                // select all data in this timespan.
+                // select all data in this range.
                 try
                 {
-                    Log.Verbose($"Updating tiles for [{earliest.Value},{earliestAndMax}[");
-                    var heatMapDiff = new HeatMapDiff(HeatMapZoom, Resolution);
-                    var contributionsCount = 0;
-                    var tooManyContributions = false;
-                    await foreach (var (createdAt, geometry) in cn.GetDataForTimeWindow(earliest.Value, earliestAndMax))
-                    {
-                        // apply diff earlier if there are too many contributions.
-                        if (contributionsCount >= 200 && state != null &&
-                            state.TimeStamp != createdAt)
-                        {
-                            Log.Verbose($"Stopped at {state.TimeStamp}, too many contributions...");
-                            tooManyContributions = true;
-                            break;
-                        }
-                        
-                        // add to heat map and keep modified tiles.
-                        heatMapDiff.Add(geometry);
-                        contributionsCount++;
-                        if (contributionsCount % 100 == 0) Log.Verbose($"Added {contributionsCount}...");
-
-                        // update state.
-                        state ??= new State();
-                        state.TimeStamp = createdAt;
-                    }
-                    Log.Verbose($"Added {contributionsCount} in total.");
-
-                    // update state, make sure it's at least earliest and max.
-                    // in case of no contributions make sure to move on.
-                    if (!tooManyContributions) state = new State {TimeStamp = earliestAndMax};
-
-                    if (contributionsCount > 0)
-                    {
-                        using var heatMap = new HeatMap(heatMapPath, Resolution);
-                        
-                        Log.Verbose($"Applying diff...");
-                        var modifiedTiles = new HashSet<(uint x, uint y, int z)>();
-                        modifiedTiles.UnionWith(heatMap.ApplyDiff(heatMapDiff, toResolution: _ => Resolution));
-                        
-                        // build vector tiles.
-                        // log when tiles are written.
-                        var vectorTiles = heatMap.ToVectorTiles(modifiedTiles.Select(tile =>
-                        {
-                            //Log.Verbose($"Writing tile {tile.z}/{tile.x}/{tile.y}.mvt...");
+                    Log.Verbose($"Updating tiles for [{state.LastContributionId+1},{newLatest}].");
                     
-                            return tile;
-                        }));
+                    // collect all tracks per user.
+                    var perUser = new Dictionary<string, List<Geometry>>();
+                    long? latestContributionId = null;
+                    var contributionsCount = 0;
+                    await foreach (var (contributionId, geometry, userId) in cn.GetDataForWindow(state.LastContributionId, newLatest))
+                    {
+                        if (!perUser.TryGetValue(userId, out var geometries))
+                        {
+                            geometries = new List<Geometry>();
+                            perUser[userId] = geometries;
+                        }
+                        geometries.Add(geometry);
 
-                        // write the tiles to disk as mvt.
-                        Log.Verbose("Writing tiles...");
-                        vectorTiles.Write(_configuration.OutputPath);
-                        Log.Verbose("Tiles written!");
+                        // keep state of last track.
+                        latestContributionId = contributionId;
+                        contributionsCount++;
                     }
+                    
+                    // update user heatmaps.
+                    var modifiedTiles = new HashSet<(uint x, uint y, int z)>();
+                    foreach (var (userId, tracks) in perUser)
+                    {
+                        modifiedTiles.UnionWith(this.UpdateUserHeatmap(userId, tracks));
+                    }
+                    Log.Verbose($"Added {contributionsCount} in total to user heatmaps.");
+
+                    if (latestContributionId != null) state.LastContributionId = latestContributionId.Value;
                 }
                 catch (Exception e)
                 {
@@ -134,8 +114,7 @@ namespace HeatMap.Tiles.Service
                 }
                 finally
                 {
-                    if (state != null)
-                        await File.WriteAllTextAsync(stateFile, System.Text.Json.JsonSerializer.Serialize(state));
+                    await File.WriteAllTextAsync(stateFile, System.Text.Json.JsonSerializer.Serialize(state));
                 }
             }
             catch (Exception e)
@@ -146,6 +125,51 @@ namespace HeatMap.Tiles.Service
             {
                 File.Delete(lockFile);
             }
+        }
+
+        /// <summary>
+        /// Update the single user heat map.
+        /// </summary>
+        /// <param name="userId">The user id.</param>
+        /// <param name="tracks">The tracks.</param>
+        /// <returns>The tiles modified.</returns>
+        private IEnumerable<(uint x, uint y, int z)> UpdateUserHeatmap(string userId, IEnumerable<Geometry> tracks)
+        {
+            // generate diff.
+            var heatMapDiff = new HeatMapDiff(HeatMapZoom, Resolution);
+            foreach (var track in tracks)
+            {
+                // add to heat map and keep modified tiles.
+                heatMapDiff.Add(track);
+            }
+
+            // update/create user heatmap.
+            var userHeatmapPath = Path.Combine(_configuration.DataPath, userId);
+            if (!Directory.Exists(userHeatmapPath)) Directory.CreateDirectory(userHeatmapPath);
+            using var userHeatmap = new HeatMap(userHeatmapPath, Resolution);
+            var tiles = userHeatmap.ApplyDiff(heatMapDiff, minZoom: 14).ToList();
+            
+            // update tiles->users map.
+            foreach (var tile in tiles)
+            {
+                var file = Path.Combine(_configuration.DataPath, $"{tile.z}-{tile.x}-{tile.z}.users");
+                var users = new List<string> {userId};
+                if (File.Exists(file))
+                {
+                    foreach (var existingUserId in File.ReadLines(file))
+                    {
+                        if (existingUserId == userId)
+                        {
+                            users.Clear();
+                            break;
+                        }
+                        users.Add(existingUserId);
+                    }
+                }
+                if (users.Count > 0) File.WriteAllLines(file, users);
+            }
+            
+            return tiles;
         }
     }
 }

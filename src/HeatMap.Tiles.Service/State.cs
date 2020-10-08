@@ -8,8 +8,8 @@ namespace HeatMap.Tiles.Service
     public class State
     {
         /// <summary>
-        /// Gets or sets the last timestamp.
+        /// Gets or sets the last processed contribution.
         /// </summary>
-        public DateTimeOffset TimeStamp { get; set; }
+        public long LastContributionId { get; set; }
     }
 }

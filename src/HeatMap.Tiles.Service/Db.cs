@@ -8,45 +8,58 @@ namespace HeatMap.Tiles.Service
 {
     internal static class Db
     {
-        public static async Task<DateTimeOffset?> GetEarliestContributionTimeStamp(this NpgsqlConnection connection)
+        public static async Task<long?> GetEarliestContributionId(this NpgsqlConnection connection)
         {
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = "select created_at from contributions order by created_at asc limit 1";
+            cmd.CommandText = "select c.\"ContributionId\" from public.\"Contributions\" c order by c.\"ContributionId\" asc limit 1";
             var result = cmd.ExecuteScalar();
 
-            if (!(result is DateTime dateTime)) return null;
-            
-            return new DateTimeOffset(dateTime.ToUniversalTime());
+            return result switch
+            {
+                long contributionId => contributionId,
+                int contributionIdInt => contributionIdInt,
+                _ => null
+            };
         }
         
-        public static async Task<DateTimeOffset?> GetLatestContributionTimeStamp(this NpgsqlConnection connection)
+        public static async Task<long?> GetLatestContributionId(this NpgsqlConnection connection)
         {
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = "select created_at from contributions order by created_at desc limit 1";
+            cmd.CommandText = "select c.\"ContributionId\" from public.\"Contributions\" c order by c.\"ContributionId\" desc limit 1";
             var result = cmd.ExecuteScalar();
 
-            if (!(result is DateTime dateTime)) return null;
-            
-            return new DateTimeOffset(dateTime.ToUniversalTime());
+            return result switch
+            {
+                long contributionId => contributionId,
+                int contributionIdInt => contributionIdInt,
+                _ => null
+            };
         }
 
-        public static async IAsyncEnumerable<(DateTimeOffset createdAt, Geometry geometry)> GetDataForTimeWindow(
-            this NpgsqlConnection connection,
-            DateTimeOffset from, DateTimeOffset to)
+        public static async IAsyncEnumerable<(long contributionId, Geometry geometry, string userId)> GetDataForWindow(
+            this NpgsqlConnection connection, long from, long to)
         {
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = "select created_at, points_geom from contributions where created_at > @from and created_at <= @to order by created_at asc";
+            cmd.CommandText = "select c.\"ContributionId\",c.\"PointsGeom\", u.\"UserIdentifier\" "+
+                "from public.\"Contributions\" c "+
+                "inner join public.\"UserContributions\" uc "+
+                "on uc.\"ContributionId\" = c.\"ContributionId\" "+
+                "inner join public.\"Users\" u "+
+                "on uc.\"UserId\" = u.\"Id\" "+
+                "where c.\"ContributionId\" > @from and c.\"ContributionId\" <= @to "+
+                "order by c.\"ContributionId\"" ;
             cmd.Parameters.AddWithValue("from", from);
             cmd.Parameters.AddWithValue("to", to);
 
             var reader = await cmd.ExecuteReaderAsync();
             while (reader.Read())
             {
-                var createdAt = new DateTimeOffset(reader.GetDateTime(0).ToUniversalTime());
+                var contributionId = reader.GetInt64(0);
                 var geometryResult = reader[1];
                 if (!(geometryResult is Geometry geometry)) continue;
+                var userId = reader.GetGuid(2).ToString();
 
-                yield return (createdAt, geometry);
+                yield return (contributionId, geometry, userId);
             }
         }
     }

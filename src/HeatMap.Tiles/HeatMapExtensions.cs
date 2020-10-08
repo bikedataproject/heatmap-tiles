@@ -32,7 +32,7 @@ namespace HeatMap.Tiles
         /// <param name="zoom">The zoom level.</param>
         /// <param name="resolution">The resolution.</param>
         public static IEnumerable<(uint x, uint y, int z)> Add(this HeatMap heatMap, IEnumerable<Geometry> geometries, int zoom = 14, uint resolution = 1024, 
-            ToResolution toResolution = null, int minZoom = 0)
+            ToResolution? toResolution = null, int minZoom = 0)
         {
             var heatMapDiff = new HeatMapDiff(zoom, resolution);
             foreach (var geometry in geometries)
@@ -51,12 +51,12 @@ namespace HeatMap.Tiles
         /// <param name="minZoom">The minimum zoom level.</param>
         /// <param name="toResolution">The resolution function.</param>
         public static IEnumerable<(uint x, uint y, int z)> ApplyDiff(this HeatMap heatMap, HeatMapDiff diff, int minZoom = 0,
-            ToResolution toResolution = null)
+            ToResolution? toResolution = null)
         {
             while (true)
             {
                 // create next diff when the minimum zoom has been been reached yet.
-                HeatMapDiff nextDiff = null;
+                HeatMapDiff? nextDiff = null;
                 if (diff.Zoom > minZoom)
                 {
                     nextDiff = diff.CreateOneLevelUp(toResolution);
@@ -83,7 +83,7 @@ namespace HeatMap.Tiles
         /// <param name="diff">The diff to apply.</param>
         /// <param name="tileId">The tile in the diff to apply.</param>
         /// <param name="nextDiff">The next diff to downscale data into.</param>
-        private static void ApplyDiff(this HeatMap heatMap, HeatMapDiff diff, uint tileId, HeatMapDiff nextDiff)
+        private static void ApplyDiff(this HeatMap heatMap, HeatMapDiff diff, uint tileId, HeatMapDiff? nextDiff)
         {
             if (nextDiff == null)
             {
