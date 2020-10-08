@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Runtime.CompilerServices;
 using HeatMap.Tiles.Diffs;
 using NetTopologySuite.Features;
@@ -21,6 +22,30 @@ namespace HeatMap.Tiles
         /// </summary>
         /// <param name="zoom">The zoom.</param>
         public delegate uint ToResolution(int zoom);
+
+        /// <summary>
+        /// Copies the data from the given heat map to the target heat map for the given tiles.
+        /// </summary>
+        /// <param name="heapMap">The source heat map.</param>
+        /// <param name="target">The target heat map.</param>
+        /// <param name="tiles">The tiles to copy for.</param>
+        public static void CopyTilesTo(this HeatMap heapMap, HeatMap target, IEnumerable<(uint x, uint y, int z)> tiles)
+        {
+            foreach (var tile in tiles)
+            {
+                if (!heapMap.TryGetTile(tile, out var sourceTile)) continue;
+
+                var targetTile = target[tile.x, tile.y, tile.z];
+                if (sourceTile.Resolution != targetTile.Resolution)
+                    throw new NotSupportedException("Resolutions don't match.");
+                
+                for (var i = 0; i < targetTile.Resolution; i++)
+                for (var j = 0; j < targetTile.Resolution; j++)
+                {
+                    targetTile[i, j] = sourceTile[i, j];
+                }
+            }
+        }
 
         /// <summary>
         /// Adds the given geometries to the heat map.

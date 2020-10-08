@@ -57,6 +57,21 @@ namespace HeatMap.Tiles
             return false;
         }
 
+        public bool TryRemoveTile((uint x, uint y, int z) tile)
+        {
+            if (!_tiles.TryGetValue(tile, out var heatMapTile)) return false;
+            
+            heatMapTile.Dispose();
+            
+            var file = FileName(tile.x, tile.y, tile.z);
+            if (File.Exists(file))
+            {
+                File.Delete(file);
+            }
+
+            return true;
+        }
+
         public HeatMapTile this[uint x, uint y, int z]
         {
             get
