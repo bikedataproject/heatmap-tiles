@@ -1,0 +1,22 @@
+{
+  "tiles": [
+    "https://api.bikedataproject.org/tiles/heatmap/{z}/{x}/{y}.mvt"
+  ],
+  "maxzoom": 14,
+  "minzoom": 0,
+  "name": "heatmap",
+  "description": "Contains trips heatmap.",
+  "format": "pbf",
+  "id": "heatmap",
+  "basename": "heatmap",
+  "vector_layers": [
+    {
+      "maxzoom": 14,
+      "minzoom": 0,
+      "id": "heatmap",
+      "description": ""
+    }
+  ],
+  "version": "1.0",
+  "tilejson": "2.0.0"
+}

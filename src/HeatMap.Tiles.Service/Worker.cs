@@ -161,6 +161,8 @@ namespace HeatMap.Tiles.Service
                                     });
                             }
                         }
+                        
+                        heatMap.Unload(); // make sure we do only one tile at a time.
                     }
                     
                     // rebuilding parent tile tree.

@@ -127,6 +127,8 @@ namespace HeatMap.Tiles
                     heatMapTile[x, y] += value;
                 }
             }
+            
+            heatMap.Unload();
         }
 
         /// <summary>
