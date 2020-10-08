@@ -16,6 +16,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "root", "root", "{009CE50B-B
 		.gitignore = .gitignore
 		README.md = README.md
 		LICENSE = LICENSE
+		NuGet.Config.actions = NuGet.Config.actions
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HeatMap.Tiles.Service", "src\HeatMap.Tiles.Service\HeatMap.Tiles.Service.csproj", "{34B5D403-F694-4F85-ACB7-9D4C29D6D1BB}"
