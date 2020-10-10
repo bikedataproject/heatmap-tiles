@@ -84,7 +84,7 @@ namespace HeatMap.Tiles
             }
         }
 
-        public void Unload()
+        public void FlushAndUnload()
         {
             foreach (var (_, tile) in _tiles)
             {

@@ -162,7 +162,7 @@ namespace HeatMap.Tiles.Service
                             }
                         }
                         
-                        heatMap.Unload(); // make sure we do only one tile at a time.
+                        heatMap.FlushAndUnload(); // make sure we do only one tile at a time.
                     }
                     
                     // rebuilding parent tile tree.
@@ -180,7 +180,7 @@ namespace HeatMap.Tiles.Service
                     }));
 
                     // write the tiles to disk as mvt.
-                    Log.Verbose($"Writing tiles {updatedTiles.Count}...");
+                    Log.Verbose($"Writing {updatedTiles.Count} tiles...");
                     vectorTiles.Write(_configuration.OutputPath);
                     Log.Verbose("Tiles written!");
 
@@ -213,6 +213,8 @@ namespace HeatMap.Tiles.Service
         /// <returns>The tiles modified.</returns>
         private IEnumerable<(uint x, uint y, int z)> UpdateUserHeatmap(string userId, IEnumerable<(Geometry geometry, long contributionId)> tracks)
         {
+            Log.Verbose($"Updating user {userId} heatmap.");
+            
             // generate diff.
             var heatMapDiff = new HeatMapDiff(HeatMapZoom, Resolution);
             var lastContribution = -1L;

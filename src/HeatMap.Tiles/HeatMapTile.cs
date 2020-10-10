@@ -92,6 +92,31 @@ namespace HeatMap.Tiles
             }
         }
 
+        // public void CopyFrom(HeatMapTile tile, Func<(int x, int y), uint, uint>? translate = null)
+        // {
+        //     for (var b = 0; b < _blockPointers.Length; b++)
+        //     {
+        //         var blockPointer = _blockPointers[b];
+        //         if (blockPointer == NoBlock) continue;
+        //
+        //         for (var o = 0; o < BlockSize; o++)
+        //         {
+        //             var val = _blocks[blockPointer + o];
+        //             if (val == 0) continue;
+        //
+        //             var pos = b * BlockSize + o;
+        //             var x = (int)(pos / this.Resolution);
+        //             var y = (int)(pos - (x * Resolution));
+        //
+        //             if (translate != null)
+        //             {
+        //                 val = translate((x, y), val);
+        //             }
+        //             yield return (x, y, val);
+        //         }
+        //     }
+        // }
+
         public uint this[int x, int y]
         {
             get

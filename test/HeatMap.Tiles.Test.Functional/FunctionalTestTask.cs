@@ -64,7 +64,7 @@ namespace HeatMap.Tiles.Test.Functional
                 _logger.LogInformation($"Diff applied...");
                 
                 // unload the used tiles.
-                heatMap.Unload();
+                heatMap.FlushAndUnload();
             }
             
             // apply the last tiles if any.

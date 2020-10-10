@@ -40,18 +40,33 @@ namespace HeatMap.Tiles
                 var targetTile = target[tile.x, tile.y, tile.z];
                 if (sourceTile.Resolution != targetTile.Resolution)
                     throw new NotSupportedException("Resolutions don't match.");
-                
-                for (var i = 0; i < targetTile.Resolution; i++)
-                for (var j = 0; j < targetTile.Resolution; j++)
+
+
+                foreach (var (x, y, v) in sourceTile.GetValues())
                 {
-                    var v = sourceTile[i, j];
+                    var value = v;
                     if (translate != null)
                     {
-                        v = translate(tile, (i, j), v);
+                        value = translate(tile, (x, y), value);
                     }
-                        
-                    targetTile[i, j] = v;
+
+                    if (value > 0)
+                    {
+                        targetTile[x, y] = value;
+                    }
                 }
+                
+                // for (var i = 0; i < targetTile.Resolution; i++)
+                // for (var j = 0; j < targetTile.Resolution; j++)
+                // {
+                //     var v = sourceTile[i, j];
+                //     if (translate != null)
+                //     {
+                //         v = translate(tile, (i, j), v);
+                //     }
+                //         
+                //     targetTile[i, j] = v;
+                // }
             }
         }
 
@@ -100,6 +115,8 @@ namespace HeatMap.Tiles
 
             var xMin = subTileRange.topLeft.x;
             var yMin = subTileRange.topLeft.y;
+            
+            var heatMapTile = heatMap[tile.x, tile.y, tile.z];
 
             for (uint xOffset = 0; xOffset < 2; xOffset++)
             for (uint yOffset = 0; yOffset < 2; yOffset++)
@@ -107,28 +124,36 @@ namespace HeatMap.Tiles
                 var subTile = (xMin + xOffset, yMin + yOffset, tile.z + 1);
                 if (!heatMap.TryGetTile(subTile, out var heatMapSubTile)) continue;
 
-                var heatMapTile = heatMap[tile.x, tile.y, tile.z];
 
                 var left = (heatMapTile.Resolution / 2) * xOffset;
                 var top = (heatMapTile.Resolution / 2) * yOffset;
 
                 var scale = heatMapTile.Resolution / heatMapSubTile.Resolution * 2;
-                
-                for (var xl = 0; xl < heatMapSubTile.Resolution; xl++)
-                for (var yl = 0; yl < heatMapSubTile.Resolution; yl++)
-                {
-                    var value = heatMapSubTile[xl, yl];
-                    if (value == 0) continue;
-                    
-                    // calculate parent tile coordinates.
-                    var x = (int)(left + (xl / scale));
-                    var y = (int)(top + (yl / scale));
 
-                    heatMapTile[x, y] += value;
+                foreach (var val in heatMapSubTile.GetValues())
+                {
+                    // calculate parent tile coordinates.
+                    var x = (int)(left + (val.x / scale));
+                    var y = (int)(top + (val.y / scale));
+
+                    heatMapTile[x, y] += val.value;
                 }
+                
+                // for (var xl = 0; xl < heatMapSubTile.Resolution; xl++)
+                // for (var yl = 0; yl < heatMapSubTile.Resolution; yl++)
+                // {
+                //     var value = heatMapSubTile[xl, yl];
+                //     if (value == 0) continue;
+                //     
+                //     // calculate parent tile coordinates.
+                //     var x = (int)(left + (xl / scale));
+                //     var y = (int)(top + (yl / scale));
+                //
+                //     heatMapTile[x, y] += value;
+                // }
             }
             
-            heatMap.Unload();
+            heatMap.FlushAndUnload();
         }
 
         /// <summary>
@@ -224,8 +249,9 @@ namespace HeatMap.Tiles
             }
             else
             {
-                if (diff.Zoom - 1 != nextDiff.Zoom) throw new NotSupportedException("Only steps of one zoom level are supported.");
-                
+                if (diff.Zoom - 1 != nextDiff.Zoom)
+                    throw new NotSupportedException("Only steps of one zoom level are supported.");
+
                 // get tile coordinates.
                 var tile = TileStatic.ToTile(diff.Zoom, tileId);
 
@@ -255,7 +281,7 @@ namespace HeatMap.Tiles
                     var value = diff[xTile + i, yTile + j];
                     if (value == 0) continue;
 
-                    var existing = (long)heatMapTile[i, j];
+                    var existing = (long) heatMapTile[i, j];
                     existing += value;
                     if (existing > uint.MaxValue) existing = uint.MaxValue;
 
@@ -263,14 +289,16 @@ namespace HeatMap.Tiles
 
                     var iScaled = i / scale;
                     var jScaled = j / scale;
-                    
-                    existing = (long)nextDiff[xTileNext + iScaled, yTileNext + jScaled];
+
+                    existing = (long) nextDiff[xTileNext + iScaled, yTileNext + jScaled];
                     existing += value;
                     if (existing > uint.MaxValue) existing = uint.MaxValue;
-                    
+
                     nextDiff[xTileNext + iScaled, yTileNext + jScaled] = (uint) existing;
                 }
             }
+            
+            heatMap.FlushAndUnload();
         }
         
         public static IEnumerable<VectorTile> ToVectorTiles(this HeatMap heatMap, 
