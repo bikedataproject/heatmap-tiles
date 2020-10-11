@@ -1,12 +1,10 @@
-using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using HeatMap.Tiles.Diffs;
+using HeatMap.Tiles.Draw;
+using HeatMap.Tiles.IO.VectorTiles;
 using Microsoft.Extensions.Logging;
-using NetTopologySuite.Features;
 using NetTopologySuite.Geometries;
-using NetTopologySuite.IO;
 using NetTopologySuite.IO.VectorTiles.Mapbox;
 using Npgsql;
 
@@ -34,7 +32,7 @@ namespace HeatMap.Tiles.Test.Functional
             _connection.Open();
             _connection.TypeMapper.UseNetTopologySuite();
             
-            var heatMap = new HeatMap(_configuration.HeatMapPath, _resolution);
+            var heatMap = new HeatMap<uint>(_configuration.HeatMapPath, _resolution);
             var heatMapDiff = new HeatMapDiff(14, _resolution);
             
             // get all tiles with data.
@@ -59,7 +57,7 @@ namespace HeatMap.Tiles.Test.Functional
                 if (diffTiles < minDiffTiles) continue;
 
                 // apply diff and keep modified tiles.
-                modifiedTiles.UnionWith(heatMap.ApplyDiff(heatMapDiff, 0, i => _resolution));
+                modifiedTiles.UnionWith(heatMap.ApplyDiff(heatMapDiff, 0));
                 heatMapDiff.Clear();
                 _logger.LogInformation($"Diff applied...");
                 
@@ -68,7 +66,7 @@ namespace HeatMap.Tiles.Test.Functional
             }
             
             // apply the last tiles if any.
-            modifiedTiles.UnionWith(heatMap.ApplyDiff(heatMapDiff, 0, i => _resolution));
+            modifiedTiles.UnionWith(heatMap.ApplyDiff(heatMapDiff, 0));
             
             // build & write vector tiles.
             var vectorTiles = heatMap.ToVectorTiles(modifiedTiles);
@@ -176,7 +174,7 @@ namespace HeatMap.Tiles.Test.Functional
         private void AddToDiff(HeatMapDiff heatMapDiff, uint x, uint y, int z)
         {
             // add all geometries in the tile.
-            heatMapDiff.Add(this.GetGeometriesForTile(x, y, z), includeTile: t =>
+            heatMapDiff.Draw(this.GetGeometriesForTile(x, y, z), includeTile: t =>
             {
                 var tile = TileStatic.ToTile(heatMapDiff.Zoom, t);
                 var parent = (tile.x, tile.y, heatMapDiff.Zoom).ParentTileFor(z);

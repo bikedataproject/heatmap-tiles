@@ -1,6 +1,6 @@
 using System;
 
-namespace HeatMap.Tiles
+namespace HeatMap.Tiles.Draw
 {
     internal static class Bresenhams
     {
