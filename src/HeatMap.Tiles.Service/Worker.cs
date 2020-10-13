@@ -105,7 +105,7 @@ namespace HeatMap.Tiles.Service
                     this.WriteVectorTiles(heatMap, updatedTiles);
                     
                     // write vector tiles mask.
-                    // this.WriteVectorTilesMask(heatMapMask, updatedTiles);
+                    this.WriteVectorTilesMask(heatMapMask, updatedTiles);
 
                     if (latestContributionId != null) state.LastContributionId = latestContributionId.Value;
                     Log.Debug("Done!");
@@ -255,9 +255,6 @@ namespace HeatMap.Tiles.Service
                                 // there is no data here!
                                 if (sourceValue == 0) return targetValue;
                                         
-                                // prevent overflow when there are more than 255 users.
-                                if (targetValue == 255) return targetValue;
-
                                 return (byte)(targetValue + 1);
                             }));
                     }
