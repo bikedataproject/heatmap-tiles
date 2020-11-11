@@ -98,7 +98,7 @@ namespace HeatMap.Tiles.Service
                     {
                         modifiedTiles.UnionWith(this.UpdateUserHeatmap(userId, tracks));
                     }
-                    Log.Information($"Added {contributionsCount} in total to user heatmaps.");
+                    Log.Information($"Added {contributionsCount} until {latestContributionId} in total to user heatmaps.");
 
                     // update the heat map mask and rebuild any parent tiles.
                     var (heatMapUserCount, userCountUpdatedTiles) = this.UpdateUserCount(heatMapUserCountPath, modifiedTiles);
