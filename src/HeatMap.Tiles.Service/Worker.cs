@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using HeatMap.Tiles.Diffs;
 using HeatMap.Tiles.Draw;
 using HeatMap.Tiles.IO.VectorTiles;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO.VectorTiles.Mapbox;
@@ -14,7 +16,7 @@ using Serilog;
 
 namespace HeatMap.Tiles.Service
 {
-    public class Worker
+    public class Worker : BackgroundService
     {        
         private const string StateFileName = "state.json";
         private const uint Resolution = 512;
@@ -28,7 +30,8 @@ namespace HeatMap.Tiles.Service
             _configuration = configuration;
         }
 
-        public async Task RunAsync()
+
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             if (!Directory.Exists(_configuration.DataPath))
             {
@@ -41,19 +44,26 @@ namespace HeatMap.Tiles.Service
                 return;
             }
             
+            _logger.LogInformation("Worker running at: {time}, triggered every {refreshTime}", 
+                DateTimeOffset.Now, _configuration.RefreshTime);
+            
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                var processedContributions = await this.RunAsync();
+                
+                // check every refresh time for new contributions 
+                // but move on immediately if new contributions were processed last run.
+                if (processedContributions == 0) await Task.Delay(_configuration.RefreshTime, stoppingToken);
+            }
+        }
+
+        private async Task<int> RunAsync()
+        {
             var stateFile = Path.Combine(_configuration.DataPath, StateFileName);
             var heatMapPath = Path.Combine(_configuration.DataPath, "heatmap-cache");
             var heatMapUserCountPath = Path.Combine(_configuration.DataPath, "heatmap-user-count");
-            var lockFile = Path.Combine(_configuration.DataPath, "heatmap-service.lock");
-            if (LockHelper.IsLocked(lockFile, TimeSpan.TicksPerDay))
-            {
-                return;
-            }
-
             try
             {
-                LockHelper.WriteLock(lockFile);
-                
                 State state = null;
                 if (File.Exists(stateFile))
                 {
@@ -68,7 +78,7 @@ namespace HeatMap.Tiles.Service
                 var latest = await cn.GetLatestContributionId();
 
                 // check for more recent data.
-                if (state != null && state.LastContributionId >= latest) return; // there is no more recent data.
+                if (state != null && state.LastContributionId >= latest) return 0; // there is no more recent data.
 
                 // process n contributions max.
                 state ??= new State()
@@ -112,6 +122,8 @@ namespace HeatMap.Tiles.Service
 
                     if (latestContributionId != null) state.LastContributionId = latestContributionId.Value;
                     Log.Debug("Done!");
+
+                    return contributionsCount;
                 }
                 catch (Exception e)
                 {
@@ -126,10 +138,8 @@ namespace HeatMap.Tiles.Service
             {
                 Log.Fatal(e, "An unhandled fatal exception occurred while updating heatmap.");
             }
-            finally
-            {
-                File.Delete(lockFile);
-            }
+
+            return 0;
         }
 
         private async Task<(Dictionary<string, List<(Geometry geometry, long contributionId)>> perUser, int count, long? latestContributionId)> GetContributionsPerUser(NpgsqlConnection cn, State state)

@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Serilog;
 
 namespace HeatMap.Tiles.Service
@@ -35,23 +36,32 @@ namespace HeatMap.Tiles.Service
                     var data = configuration["data"];
                     var output = configuration["output"];
 
-                    // setup DI.
-                    var serviceProvider = new ServiceCollection()
-                        .AddLogging(b => { b.AddSerilog(); })
-                        .AddSingleton<Worker>()
-                        .AddSingleton(new WorkerConfiguration()
+                    // setup host and configure DI.
+                    var host = Host.CreateDefaultBuilder(args)
+                        .ConfigureServices((hostContext, services) =>
                         {
-                            DataPath = data,
-                            ConnectionString = connectionString,
-                            OutputPath = output,
-                            UserThreshold = minUsers,
-                            MaxContributions = maxContributions
-                        })
-                        .BuildServiceProvider();
-
-                    //do the actual work here
-                    var task = serviceProvider.GetService<Worker>();
-                    await task.RunAsync();
+                            // add logging.
+                            services.AddLogging(b =>
+                            {
+                                b.AddSerilog();
+                            });
+                            
+                            // add configuration.
+                            services.AddSingleton(new WorkerConfiguration()
+                            {
+                                DataPath = data,
+                                ConnectionString = connectionString,
+                                OutputPath = output,
+                                UserThreshold = minUsers,
+                                MaxContributions = maxContributions
+                            });
+                            
+                            // add the service.
+                            services.AddHostedService<Worker>();
+                        }).Build();
+                    
+                    // run!
+                    await host.RunAsync();
                 }
                 catch (Exception e)
                 {

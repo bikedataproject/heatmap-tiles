@@ -11,5 +11,7 @@ namespace HeatMap.Tiles.Service
         public string DataPath { get; set; }
 
         public string OutputPath { get; set; }
+
+        public int RefreshTime { get; set; } = 1000;
     }
 }
