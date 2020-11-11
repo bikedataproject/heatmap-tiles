@@ -16,4 +16,4 @@ VOLUME ["/var/app/logs"]
 
 # Set the default command to execute when creating a new container
 WORKDIR /var/app/
-ENTRYPOINT dotnet HeatMap.Tiles.Services.dll
+ENTRYPOINT dotnet HeatMap.Tiles.Service.dll
