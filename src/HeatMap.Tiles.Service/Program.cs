@@ -26,6 +26,7 @@ namespace HeatMap.Tiles.Service
                 Log.Logger = new LoggerConfiguration()
                     .ReadFrom.Configuration(configuration)
                     .CreateLogger();
+                
                 try
                 {
                     var connectionString = await File.ReadAllTextAsync(configuration[$"DB"]);

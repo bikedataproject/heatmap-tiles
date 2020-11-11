@@ -43,7 +43,7 @@ namespace HeatMap.Tiles.Service
             
             var stateFile = Path.Combine(_configuration.DataPath, StateFileName);
             var heatMapPath = Path.Combine(_configuration.DataPath, "heatmap-cache");
-            var heatMapMaskPath = Path.Combine(_configuration.DataPath, "heatmap-mask");
+            var heatMapUserCountPath = Path.Combine(_configuration.DataPath, "heatmap-user-count");
             var lockFile = Path.Combine(_configuration.DataPath, "heatmap-service.lock");
             if (LockHelper.IsLocked(lockFile, TimeSpan.TicksPerDay))
             {
@@ -90,11 +90,17 @@ namespace HeatMap.Tiles.Service
                     }
                     Log.Debug($"Added {contributionsCount} in total to user heatmaps.");
 
-                    // update the heat map mask.
-                    var heatMapMask = this.UpdateMask(heatMapMaskPath, modifiedTiles);
+                    // update the heat map mask and rebuild any parent tiles.
+                    var (heatMapUserCount, userCountUpdatedTiles) = this.UpdateUserCount(heatMapUserCountPath, modifiedTiles);
+                    Log.Debug($"Updating user count parent tile tree for {userCountUpdatedTiles.Count} updated tiles...");
+                    var userCountParentTiles = heatMapUserCount.RebuildParentTileTree(userCountUpdatedTiles);
+                    userCountUpdatedTiles.UnionWith(userCountParentTiles);
                     
+                    // write user count tiles.
+                    this.WriteVectorTilesUserCount(heatMapUserCount, userCountUpdatedTiles);
+
                     // update the heat map.
-                    var (heatMap, updatedTiles) = this.UpdateHeatMap(heatMapPath, modifiedTiles, heatMapMask);
+                    var (heatMap, updatedTiles) = this.UpdateHeatMap(heatMapPath, modifiedTiles, heatMapUserCount);
                     
                     // rebuilding parent tile tree.
                     Log.Debug($"Updating parent tile tree for {updatedTiles.Count} update tiles...");
@@ -103,9 +109,6 @@ namespace HeatMap.Tiles.Service
                     
                     // write vector tiles.
                     this.WriteVectorTiles(heatMap, updatedTiles);
-                    
-                    // write vector tiles mask.
-                    this.WriteVectorTilesMask(heatMapMask, updatedTiles);
 
                     if (latestContributionId != null) state.LastContributionId = latestContributionId.Value;
                     Log.Debug("Done!");
@@ -172,7 +175,7 @@ namespace HeatMap.Tiles.Service
             }).Write(_configuration.OutputPath);
         }
 
-        private void WriteVectorTilesMask(HeatMap<uint> heatMap, HashSet<(uint x, uint y, int z)> updatedTiles)
+        private void WriteVectorTilesUserCount(HeatMap<uint> heatMap, HashSet<(uint x, uint y, int z)> updatedTiles)
         {
             // build mask vector tiles.
             // log when tiles are written.
@@ -180,13 +183,13 @@ namespace HeatMap.Tiles.Service
 
             // write the tiles to disk as mvt.
             Log.Debug($"Writing {updatedTiles.Count} mask tiles...");
-            var maskPath = Path.Combine(_configuration.OutputPath, "mask");
+            var maskPath = Path.Combine(_configuration.OutputPath, "user-count");
             if (Directory.Exists(maskPath)) Directory.CreateDirectory(maskPath);
             vectorTiles.Write(maskPath);
         }
 
         private (HeatMap<uint> heatMap, HashSet<(uint x, uint y, int z)> updateTiles) UpdateHeatMap(string heatMapPath, IEnumerable<(uint x, uint y, int z)> modifiedTiles,
-            HeatMap<uint> heatMapMask)
+            HeatMap<uint> heatMapUserCount)
         {
             // update all modified tiles.
             var heatMap = new HeatMap<uint>(heatMapPath, Resolution);
@@ -198,7 +201,7 @@ namespace HeatMap.Tiles.Service
                         
                 // get mask tile.
                 updatedTiles.Add(modifiedTile);
-                if (!heatMapMask.TryGetTile(modifiedTile, out var maskTile)) continue;
+                if (!heatMapUserCount.TryGetTile(modifiedTile, out var maskTile)) continue;
                 Log.Verbose($"Tile updated with user {_configuration.UserThreshold} threshold: {modifiedTile}");
                         
                 // load the heatmaps of all users in this tile.
@@ -222,34 +225,37 @@ namespace HeatMap.Tiles.Service
                 }
                 
                 // make sure we do only one tile at a time.        
-                heatMapMask.FlushAndUnload();
+                heatMapUserCount.FlushAndUnload();
                 heatMap.FlushAndUnload(); 
             }
 
             return (heatMap, updatedTiles);
         }
 
-        private HeatMap<uint> UpdateMask(string heatMapMaskPath, IEnumerable<(uint x, uint y, int z)> modifiedTiles)
+        private (HeatMap<uint> heatMap, HashSet<(uint x, uint y, int z)> updateTiles) UpdateUserCount(string heatMapMaskPath, IEnumerable<(uint x, uint y, int z)> modifiedTiles)
         {
             // update masks for all modified tiles.
-            var heatMapMask = new HeatMap<uint>(heatMapMaskPath, Resolution);
+            var heatMapUserCount = new HeatMap<uint>(heatMapMaskPath, Resolution);
+            var updatedTiles = new HashSet<(uint x, uint y, int z)>();
             foreach (var modifiedTile in modifiedTiles)
             {
-                heatMapMask.TryRemoveTile(modifiedTile);
+                if (heatMapUserCount.TryRemoveTile(modifiedTile)) updatedTiles.Add(modifiedTile);
                         
+                // get mask tile.
                 var users = this.GetUsersFor(modifiedTile).ToList();
                 if (users.Count < _configuration.UserThreshold)
                 {
                     Log.Verbose($"Tile modified below {_configuration.UserThreshold} user threshold: {modifiedTile} with {users.Count}");
                     continue;
                 }
-                        
+                
+                updatedTiles.Add(modifiedTile);
                 Log.Verbose($"Tile modified with {_configuration.UserThreshold} user threshold: {modifiedTile} with {users.Count}");
                 foreach (var userId in users)
                 {
                     using (var userHeatmap = this.GetOrCreateUserHeatMap(userId))
                     {
-                        userHeatmap.AddTilesTo(heatMapMask, new [] {modifiedTile},
+                        userHeatmap.AddTilesTo(heatMapUserCount, new [] {modifiedTile},
                             ((tile, location, targetValue, sourceValue) =>
                             {
                                 // there is no data here!
@@ -261,9 +267,9 @@ namespace HeatMap.Tiles.Service
                 }
             }
             
-            heatMapMask.FlushAndUnload();
+            heatMapUserCount.FlushAndUnload();
 
-            return heatMapMask;
+            return (heatMapUserCount, updatedTiles);
         }
 
         /// <summary>
