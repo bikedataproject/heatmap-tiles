@@ -6,6 +6,8 @@ namespace HeatMap.Tiles.Service
         
         public int UserThreshold { get; set; }
         
+        public int MaxUsers { get; set; }
+        
         public int MaxContributions { get; set; }
 
         public string DataPath { get; set; }

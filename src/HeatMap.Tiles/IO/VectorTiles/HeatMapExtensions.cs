@@ -17,39 +17,15 @@ namespace HeatMap.Tiles.IO.VectorTiles
         /// </summary>
         /// <param name="heatMap">The heat map.</param>
         /// <param name="tiles">The tiles.</param>
-        /// <returns>The vector tiles.</returns>
-        public static IEnumerable<VectorTile> ToVectorTiles(this HeatMap<byte> heatMap, 
-            IEnumerable<(uint x, uint y, int z)> tiles)
-        {
-            return heatMap.ToVectorTiles(tiles, (_, x) => x);
-        }
-        
-        /// <summary>
-        /// Converts the given tiles from the heat map to vector tiles.
-        /// </summary>
-        /// <param name="heatMap">The heat map.</param>
-        /// <param name="tiles">The tiles.</param>
-        /// <returns>The vector tiles.</returns>
-        public static IEnumerable<VectorTile> ToVectorTiles(this HeatMap<uint> heatMap, 
-            IEnumerable<(uint x, uint y, int z)> tiles)
-        {
-            return heatMap.ToVectorTiles(tiles, (_, x) => x);
-        }
-        
-        /// <summary>
-        /// Converts the given tiles from the heat map to vector tiles.
-        /// </summary>
-        /// <param name="heatMap">The heat map.</param>
-        /// <param name="tiles">The tiles.</param>
-        /// <param name="getValue">Gets the heat map value.</param>
+        /// <param name="getAttributes">Gets the attribute collection.</param>
         /// <returns>The vector tiles.</returns>
         public static IEnumerable<VectorTile> ToVectorTiles<THeatMap>(this HeatMap<THeatMap> heatMap,
-            IEnumerable<(uint x, uint y, int z)> tiles, Func<(uint x, uint y, int z), THeatMap, uint?> getValue)
+            IEnumerable<(uint x, uint y, int z)> tiles, Func<(uint x, uint y, int z), THeatMap, AttributesTable?> getAttributes)
             where THeatMap : struct
         {
             foreach (var tile in tiles)
             {
-                var vt = heatMap.ToVectorTile(tile, x => getValue(tile, x));
+                var vt = heatMap.ToVectorTile(tile, x => getAttributes(tile, x));
                 if (vt == null) continue;
 
                 yield return vt;
@@ -64,7 +40,7 @@ namespace HeatMap.Tiles.IO.VectorTiles
         /// <param name="getValue">Gets the heat map value.</param>
         /// <returns>The vector tile.</returns>
         public static VectorTile? ToVectorTile<THeatMap>(this HeatMap<THeatMap> heatMap, 
-            (uint x, uint y, int z) tile, Func<THeatMap, uint?> getValue)
+            (uint x, uint y, int z) tile, Func<THeatMap, AttributesTable?> getValue)
             where THeatMap : struct
         {
             if (!heatMap.TryGetTile(tile, out var heatMapTile)) return null;
@@ -84,13 +60,13 @@ namespace HeatMap.Tiles.IO.VectorTiles
 
             foreach (var (x, y, value) in heatMapTile.GetValues())
             {
-                var valNullable = getValue(value);
-                if (valNullable == null) continue;
+                var attributesTable = getValue(value);
+                if (attributesTable == null) continue;
                 
                 var (longitude, latitude) = tgt.TransformTo(x, y);
                 vectorTile.Layers[0].Features.Add(new Feature(
                     new Point(new Coordinate(longitude, latitude)), 
-                    new AttributesTable {{"cost", valNullable.Value}} ));
+                    attributesTable));
             }
             
             if (vectorTile.Layers[0].Features.Count == 0)

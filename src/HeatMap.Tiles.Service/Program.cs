@@ -31,11 +31,12 @@ namespace HeatMap.Tiles.Service
                 try
                 {
                     var connectionString = await File.ReadAllTextAsync(configuration[$"DB"]);
-                    var minUsers = int.Parse(configuration[$"MIN_USERS"]);
-                    var maxContributions = int.Parse(configuration[$"MAX_CONTRIBUTIONS"]);
+                    var minUsers = configuration.GetValueOrDefault($"MIN_USERS", 3);
+                    var maxContributions = configuration.GetValueOrDefault<int>($"MAX_CONTRIBUTIONS", 10);
+                    var maxUsers = configuration.GetValueOrDefault<int>($"MAX_USERS", 2);
+                    var refreshTime = configuration.GetValueOrDefault<int>("refresh-time", 1000);
                     var data = configuration["data"];
                     var output = configuration["output"];
-                    var refreshTime = configuration.GetValueOrDefault<int>("refresh-time", 1000);
 
                     // setup host and configure DI.
                     var host = Host.CreateDefaultBuilder(args)
@@ -48,13 +49,14 @@ namespace HeatMap.Tiles.Service
                             });
                             
                             // add configuration.
-                            services.AddSingleton(new WorkerConfiguration()
+                            services.AddSingleton(new WorkerConfiguration
                             {
                                 DataPath = data,
                                 ConnectionString = connectionString,
                                 OutputPath = output,
                                 UserThreshold = minUsers,
                                 MaxContributions = maxContributions,
+                                MaxUsers = maxUsers,
                                 RefreshTime = refreshTime
                             });
                             

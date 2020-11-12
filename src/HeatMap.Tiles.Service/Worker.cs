@@ -9,6 +9,7 @@ using HeatMap.Tiles.Draw;
 using HeatMap.Tiles.IO.VectorTiles;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using NetTopologySuite.Features;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO.VectorTiles.Mapbox;
 using Npgsql;
@@ -62,8 +63,8 @@ namespace HeatMap.Tiles.Service
         private async Task<int> RunAsync()
         {
             var stateFile = Path.Combine(_configuration.DataPath, StateFileName);
-            var heatMapPath = Path.Combine(_configuration.DataPath, "heatmap-cache");
-            var heatMapUserCountPath = Path.Combine(_configuration.DataPath, "heatmap-user-count");
+            var heatMapPath = Path.Combine(_configuration.DataPath, "heatmap");
+            
             try
             {
                 State state = null;
@@ -100,26 +101,17 @@ namespace HeatMap.Tiles.Service
                     {
                         modifiedTiles.UnionWith(this.UpdateUserHeatmap(userId, tracks));
                     }
-                    Log.Information($"Added {contributionsCount} until {latestContributionId} in total to user heatmaps.");
+                    Log.Information($"Added {contributionsCount} until {latestContributionId} in total to {perUser.Count} user heatmaps.");
 
-                    // update the heat map mask and rebuild any parent tiles.
-                    var (heatMapUserCount, userCountUpdatedTiles) = this.UpdateUserCount(heatMapUserCountPath, modifiedTiles);
-                    Log.Debug($"Updating user count parent tile tree for {userCountUpdatedTiles.Count} updated tiles...");
-                    var userCountParentTiles = heatMapUserCount.RebuildParentTileTree(userCountUpdatedTiles);
-                    userCountUpdatedTiles.UnionWith(userCountParentTiles);
+                    // update the heat map and return the updates tiles.
+                    var (heatMap, updatedTiles) = this.UpdateHeatMap(heatMapPath, modifiedTiles);
+                    
+                    // update the parent heat map.
+                    Log.Debug($"Updating parent tile tree for {updatedTiles.Count} updated tiles...");
+                    var userCountParentTiles = heatMap.RebuildParentTileTree(updatedTiles);
+                    updatedTiles.UnionWith(userCountParentTiles);
                     
                     // write user count tiles.
-                    this.WriteVectorTilesUserCount(heatMapUserCount, userCountUpdatedTiles);
-
-                    // update the heat map.
-                    var (heatMap, updatedTiles) = this.UpdateHeatMap(heatMapPath, modifiedTiles, heatMapUserCount);
-                    
-                    // rebuilding parent tile tree.
-                    Log.Debug($"Updating parent tile tree for {updatedTiles.Count} update tiles...");
-                    var parentTiles = heatMap.RebuildParentTileTree(updatedTiles);
-                    updatedTiles.UnionWith(parentTiles);
-                    
-                    // write vector tiles.
                     this.WriteVectorTiles(heatMap, updatedTiles);
 
                     if (latestContributionId != null) state.LastContributionId = latestContributionId.Value;
@@ -157,6 +149,7 @@ namespace HeatMap.Tiles.Service
             {
                 if (!perUser.TryGetValue(userId, out var geometries))
                 {
+                    if (perUser.Count >= _configuration.MaxUsers) break; 
                     geometries = new List<(Geometry geometry, long contributionId)>();
                     perUser[userId] = geometries;
                 }
@@ -167,87 +160,29 @@ namespace HeatMap.Tiles.Service
                 contributionsCount++;
             }
 
+            Log.Debug($"Got {contributionsCount} contributions for {perUser.Count} users.");
             return (perUser, contributionsCount, latestContributionId);
         }
-
-        private void WriteVectorTiles(HeatMap<uint> heatMap, HashSet<(uint x, uint y, int z)> updatedTiles)
+        
+        private static (uint userCount, uint tripCount) Decode(ulong heatMapValue)
         {
-            // build vector tiles.
-            // log when tiles are written.
-            var vectorTiles = heatMap.ToVectorTiles(updatedTiles);
-
-            // write the tiles to disk as mvt.
-            Log.Debug($"Writing {updatedTiles.Count} tiles...");
-            vectorTiles.Select(x =>
-            {
-                var tile = new NetTopologySuite.IO.VectorTiles.Tiles.Tile(x.TileId);
-                Log.Verbose($"Writing {tile.X}/{tile.Y}/{tile.Zoom} tiles...");
-                
-                return x;
-            }).Write(_configuration.OutputPath);
+            return ((uint)(heatMapValue >> 32), (uint)(heatMapValue & uint.MaxValue));
         }
 
-        private void WriteVectorTilesUserCount(HeatMap<uint> heatMap, HashSet<(uint x, uint y, int z)> updatedTiles)
+        private static ulong Encode(uint userCount, uint tripCount)
         {
-            // build mask vector tiles.
-            // log when tiles are written.
-            var vectorTiles = heatMap.ToVectorTiles(updatedTiles, (t, x) => x);
-
-            // write the tiles to disk as mvt.
-            Log.Debug($"Writing {updatedTiles.Count} mask tiles...");
-            var maskPath = Path.Combine(_configuration.OutputPath, "user-count");
-            if (Directory.Exists(maskPath)) Directory.CreateDirectory(maskPath);
-            vectorTiles.Write(maskPath);
+            return (ulong)userCount << 32 | tripCount;
         }
 
-        private (HeatMap<uint> heatMap, HashSet<(uint x, uint y, int z)> updateTiles) UpdateHeatMap(string heatMapPath, IEnumerable<(uint x, uint y, int z)> modifiedTiles,
-            HeatMap<uint> heatMapUserCount)
-        {
-            // update all modified tiles.
-            var heatMap = new HeatMap<uint>(heatMapPath, Resolution);
-            var updatedTiles = new HashSet<(uint x, uint y, int z)>();
-            foreach (var modifiedTile in modifiedTiles)
-            {
-                // completely remove tile at lowest level.
-                heatMap.TryRemoveTile(modifiedTile);
-                        
-                // get user count tile, if it doesn't exist the threshold wasn't reached.
-                if (!heatMapUserCount.TryGetTile(modifiedTile, out var maskTile)) continue;
-                Log.Verbose($"Tile updated with user {_configuration.UserThreshold} threshold: {modifiedTile}");
-                updatedTiles.Add(modifiedTile);
-                        
-                // load the heatmaps of all users in this tile.
-                foreach (var userId in this.GetUsersFor(modifiedTile))
-                {
-                    using (var userHeatmap = this.GetOrCreateUserHeatMap(userId))
-                    {
-                        userHeatmap.AddTilesTo(heatMap, new[] { modifiedTile }, (_, l, value) =>
-                        {
-                            var mask = maskTile[l.x, l.y];
-                            if (mask == 0) return 0;
-
-                            return value;
-                        });
-                    }
-                }
-                
-                // make sure we do only one tile at a time.        
-                heatMapUserCount.FlushAndUnload();
-                heatMap.FlushAndUnload(); 
-            }
-
-            return (heatMap, updatedTiles);
-        }
-
-        private (HeatMap<uint> heatMap, HashSet<(uint x, uint y, int z)> updateTiles) UpdateUserCount(string heatMapMaskPath, IEnumerable<(uint x, uint y, int z)> modifiedTiles)
+        private (HeatMap<ulong> heatMap, HashSet<(uint x, uint y, int z)> updateTiles) UpdateHeatMap(string heatMapPath, IEnumerable<(uint x, uint y, int z)> modifiedTiles)
         {
             // update user tiles for all modified tiles.
-            var heatMapUserCount = new HeatMap<uint>(heatMapMaskPath, Resolution);
+            var heatMap = new HeatMap<ulong>(heatMapPath, Resolution);
             var updatedTiles = new HashSet<(uint x, uint y, int z)>();
             foreach (var modifiedTile in modifiedTiles)
             {
                 // remove existing user tile.
-                if (heatMapUserCount.TryRemoveTile(modifiedTile)) updatedTiles.Add(modifiedTile);
+                if (heatMap.TryRemoveTile(modifiedTile)) updatedTiles.Add(modifiedTile);
                         
                 // get user tiles.
                 var users = this.GetUsersFor(modifiedTile).ToList();
@@ -260,34 +195,42 @@ namespace HeatMap.Tiles.Service
                 {
                     using (var userHeatmap = this.GetOrCreateUserHeatMap(userId))
                     {
-                        userHeatmap.AddTilesTo(heatMapUserCount, new [] {modifiedTile},
-                            ((tile, location, targetValue, sourceValue) =>
+                        userHeatmap.AddTilesTo(heatMap, new [] {modifiedTile},
+                            ((tile, location, existingTargetValue, userValue) =>
                             {
                                 // there is no data here!
-                                if (sourceValue == 0) return targetValue;
-                                        
-                                return (byte)(targetValue + 1);
+                                if (userValue == 0) return existingTargetValue;
+                                
+                                // decode existing value.
+                                var (userCount, tripCount) = Decode(existingTargetValue);
+
+                                // add user data and encode.
+                                return Encode(userCount + 1, tripCount + userValue);
                             }));
                     }
                 }
                 
                 // apply threshold.
-                if (heatMapUserCount.TryGetTile(modifiedTile, out var newTile))
+                if (heatMap.TryGetTile(modifiedTile, out var newTile))
                 {
                     newTile.UpdateValues(v =>
                     {
-                        if (v.value < _configuration.UserThreshold) return 0;
+                        // decode existing value.
+                        var (userCount, tripCount) = Decode(v.value);
+                        
+                        // if the user count is lower than threshold just remove the sample.
+                        if (userCount < _configuration.UserThreshold) return 0;
 
                         return v.value;
                     });
                 }
             }
             
-            heatMapUserCount.FlushAndUnload();
+            heatMap.FlushAndUnload();
 
-            return (heatMapUserCount, updatedTiles);
+            return (heatMap, updatedTiles);
         }
-
+        
         /// <summary>
         /// Update the single user heat map.
         /// </summary>
@@ -319,6 +262,30 @@ namespace HeatMap.Tiles.Service
             this.AddUserTo(userId, tiles);
             
             return tiles;
+        }
+        
+        private void WriteVectorTiles(HeatMap<ulong> heatMap, HashSet<(uint x, uint y, int z)> updatedTiles)
+        {
+            // build vector tiles.
+            // log when tiles are written.
+            var vectorTiles = heatMap.ToVectorTiles(updatedTiles, (t, v) =>
+            {
+                var (userCount, tripCount) = Decode(v);
+
+                if (userCount == 0) return null;
+                
+                return new AttributesTable {{"users", userCount}, {"trips", tripCount}};
+            });
+
+            // write the tiles to disk as mvt.
+            Log.Debug($"Writing {updatedTiles.Count} tiles...");
+            vectorTiles.Select(x =>
+            {
+                var tile = new NetTopologySuite.IO.VectorTiles.Tiles.Tile(x.TileId);
+                Log.Verbose($"Writing {tile.X}/{tile.Y}/{tile.Zoom} tiles...");
+                
+                return x;
+            }).Write(_configuration.OutputPath);
         }
 
         private HeatMap<uint> GetOrCreateUserHeatMap(string userId)

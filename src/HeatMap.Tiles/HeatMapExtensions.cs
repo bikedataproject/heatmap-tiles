@@ -119,8 +119,10 @@ namespace HeatMap.Tiles
         /// <param name="target">The target heat map.</param>
         /// <param name="tiles">The tiles to copy for.</param>
         /// <param name="translate">A function to translate values.</param>
-        public static void AddTilesTo(this HeatMap<uint> heapMap, HeatMap<uint> target, IEnumerable<(uint x, uint y, int z)> tiles,
-            Delegates.AddPerTileFunc<uint, uint> translate)
+        public static void AddTilesTo<TSource, TTarget>(this HeatMap<TSource> heapMap, HeatMap<TTarget> target, IEnumerable<(uint x, uint y, int z)> tiles,
+            Delegates.AddPerTileFunc<TSource, TTarget> translate)
+            where TSource : struct
+            where TTarget : struct
         {
             foreach (var tile in tiles)
             {
@@ -143,7 +145,7 @@ namespace HeatMap.Tiles
         /// </summary>
         /// <param name="heatMap">The heat map.</param>
         /// <param name="tiles">The modified tiles.</param>
-        public static IEnumerable<(uint x, uint y, int z)> RebuildParentTileTree(this HeatMap<uint> heatMap, IEnumerable<(uint x, uint y, int z)> tiles)
+        public static IEnumerable<(uint x, uint y, int z)> RebuildParentTileTree(this HeatMap<ulong> heatMap, IEnumerable<(uint x, uint y, int z)> tiles)
         {
             while (true)
             {
@@ -175,7 +177,7 @@ namespace HeatMap.Tiles
         /// <param name="heatMap">The heat map.</param>
         /// <param name="tile">The tile.</param>
         /// <remarks>If there are no sub-tiles found the tile is removed.</remarks>
-        public static void RebuildTile(this HeatMap<uint> heatMap, (uint x, uint y, int z) tile)
+        public static void RebuildTile(this HeatMap<ulong> heatMap, (uint x, uint y, int z) tile)
         {
             heatMap.TryRemoveTile(tile);
             
@@ -194,7 +196,7 @@ namespace HeatMap.Tiles
                 var top = (heatMap.Resolution / 2) * yOffset;
                 var scale = heatMap.Resolution / heatMapSubTile.Resolution * 2;
 
-                HeatMapTile<uint>? heatMapTile = null;
+                HeatMapTile<ulong>? heatMapTile = null;
                 foreach (var val in heatMapSubTile.GetValues())
                 {
                     // has to be here, only for tiles that exist!
