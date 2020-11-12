@@ -35,6 +35,7 @@ namespace HeatMap.Tiles.Service
                     var maxContributions = int.Parse(configuration[$"MAX_CONTRIBUTIONS"]);
                     var data = configuration["data"];
                     var output = configuration["output"];
+                    var refreshTime = configuration.GetValueOrDefault<int>("refresh-time", 1000);
 
                     // setup host and configure DI.
                     var host = Host.CreateDefaultBuilder(args)
@@ -53,7 +54,8 @@ namespace HeatMap.Tiles.Service
                                 ConnectionString = connectionString,
                                 OutputPath = output,
                                 UserThreshold = minUsers,
-                                MaxContributions = maxContributions
+                                MaxContributions = maxContributions,
+                                RefreshTime = refreshTime
                             });
                             
                             // add the service.

@@ -111,6 +111,31 @@ namespace HeatMap.Tiles
         }
 
         /// <summary>
+        /// Enumerates all non-zero values.
+        /// </summary>
+        /// <returns>All non-zero values.</returns>
+        public void UpdateValues(Func<(int x, int y, T value), T> updateFunc)
+        {
+            for (var b = 0; b < _blockPointers.Length; b++)
+            {
+                var blockPointer = _blockPointers[b];
+                if (blockPointer == NoBlock) continue;
+
+                for (var o = 0; o < BlockSize; o++)
+                {
+                    var val = _blocks[blockPointer + o];
+                    if (val.Equals(default(T))) continue;
+
+                    var pos = b * BlockSize + o;
+                    var x = (int)(pos / this.Resolution);
+                    var y = (int)(pos - (x * Resolution));
+                    
+                    _blocks[blockPointer + o] = updateFunc((x, y, val));
+                }
+            }
+        }
+
+        /// <summary>
         /// Gets or sets the value at the given location.
         /// </summary>
         /// <param name="x">The x-coordinate.</param>

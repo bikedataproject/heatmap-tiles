@@ -23,13 +23,12 @@ namespace HeatMap.Tiles.Service
         private const int HeatMapZoom = 14;
         private readonly ILogger<Worker> _logger;
         private readonly WorkerConfiguration _configuration;
-
+        
         public Worker(WorkerConfiguration configuration, ILogger<Worker> logger)
         {
             _logger = logger;
             _configuration = configuration;
         }
-
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
@@ -50,6 +49,9 @@ namespace HeatMap.Tiles.Service
             while (!stoppingToken.IsCancellationRequested)
             {
                 var processedContributions = await this.RunAsync();
+                
+                // if refresh time is 0 don't refresh.
+                if (_configuration.RefreshTime == 0) return;
                 
                 // check every refresh time for new contributions 
                 // but move on immediately if new contributions were processed last run.
@@ -189,7 +191,7 @@ namespace HeatMap.Tiles.Service
         {
             // build mask vector tiles.
             // log when tiles are written.
-            var vectorTiles = heatMap.ToVectorTiles(updatedTiles);
+            var vectorTiles = heatMap.ToVectorTiles(updatedTiles, (t, x) => x);
 
             // write the tiles to disk as mvt.
             Log.Debug($"Writing {updatedTiles.Count} mask tiles...");
@@ -209,10 +211,10 @@ namespace HeatMap.Tiles.Service
                 // completely remove tile at lowest level.
                 heatMap.TryRemoveTile(modifiedTile);
                         
-                // get mask tile.
-                updatedTiles.Add(modifiedTile);
+                // get user count tile, if it doesn't exist the threshold wasn't reached.
                 if (!heatMapUserCount.TryGetTile(modifiedTile, out var maskTile)) continue;
                 Log.Verbose($"Tile updated with user {_configuration.UserThreshold} threshold: {modifiedTile}");
+                updatedTiles.Add(modifiedTile);
                         
                 // load the heatmaps of all users in this tile.
                 foreach (var userId in this.GetUsersFor(modifiedTile))
@@ -223,11 +225,6 @@ namespace HeatMap.Tiles.Service
                         {
                             var mask = maskTile[l.x, l.y];
                             if (mask == 0) return 0;
-                            if (mask < _configuration.UserThreshold)
-                            {
-                                //Log.Debug($"Mask value found: {mask}");
-                                return 0;
-                            }
 
                             return value;
                         });
@@ -244,21 +241,19 @@ namespace HeatMap.Tiles.Service
 
         private (HeatMap<uint> heatMap, HashSet<(uint x, uint y, int z)> updateTiles) UpdateUserCount(string heatMapMaskPath, IEnumerable<(uint x, uint y, int z)> modifiedTiles)
         {
-            // update masks for all modified tiles.
+            // update user tiles for all modified tiles.
             var heatMapUserCount = new HeatMap<uint>(heatMapMaskPath, Resolution);
             var updatedTiles = new HashSet<(uint x, uint y, int z)>();
             foreach (var modifiedTile in modifiedTiles)
             {
+                // remove existing user tile.
                 if (heatMapUserCount.TryRemoveTile(modifiedTile)) updatedTiles.Add(modifiedTile);
                         
-                // get mask tile.
+                // get user tiles.
                 var users = this.GetUsersFor(modifiedTile).ToList();
-                if (users.Count < _configuration.UserThreshold)
-                {
-                    Log.Verbose($"Tile modified below {_configuration.UserThreshold} user threshold: {modifiedTile} with {users.Count}");
-                    continue;
-                }
+                if (users.Count < _configuration.UserThreshold) continue;
                 
+                // add all user data.
                 updatedTiles.Add(modifiedTile);
                 Log.Verbose($"Tile modified with {_configuration.UserThreshold} user threshold: {modifiedTile} with {users.Count}");
                 foreach (var userId in users)
@@ -274,6 +269,17 @@ namespace HeatMap.Tiles.Service
                                 return (byte)(targetValue + 1);
                             }));
                     }
+                }
+                
+                // apply threshold.
+                if (heatMapUserCount.TryGetTile(modifiedTile, out var newTile))
+                {
+                    newTile.UpdateValues(v =>
+                    {
+                        if (v.value < _configuration.UserThreshold) return 0;
+
+                        return v.value;
+                    });
                 }
             }
             
