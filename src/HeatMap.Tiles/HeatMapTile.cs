@@ -76,7 +76,8 @@ namespace HeatMap.Tiles
             stream.Seek(4 + (blocks * 4), SeekOrigin.Begin);
             
             // create the mapped blocks array.
-            var blocksSize = (stream.Length - stream.Position) / 4;
+            var elementSize = MemoryMap.GetCreateAccessorFuncFor<T>()(new MemoryMapStream(new MemoryStream()), 64).ElementSize;
+            var blocksSize = (stream.Length - stream.Position) / elementSize;
             _blocks = ArrayBase<T>.CreateFor(new MemoryMapStream(new LimitedStream(stream)), 
                 blocksSize, ArrayProfile.NoCache);
         }

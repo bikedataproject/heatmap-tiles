@@ -163,16 +163,6 @@ namespace HeatMap.Tiles.Service
             Log.Debug($"Got {contributionsCount} contributions for {perUser.Count} users.");
             return (perUser, contributionsCount, latestContributionId);
         }
-        
-        private static (uint userCount, uint tripCount) Decode(ulong heatMapValue)
-        {
-            return ((uint)(heatMapValue >> 32), (uint)(heatMapValue & uint.MaxValue));
-        }
-
-        private static ulong Encode(uint userCount, uint tripCount)
-        {
-            return (ulong)userCount << 32 | tripCount;
-        }
 
         private (HeatMap<ulong> heatMap, HashSet<(uint x, uint y, int z)> updateTiles) UpdateHeatMap(string heatMapPath, IEnumerable<(uint x, uint y, int z)> modifiedTiles)
         {
@@ -196,17 +186,17 @@ namespace HeatMap.Tiles.Service
                     using (var userHeatmap = this.GetOrCreateUserHeatMap(userId))
                     {
                         userHeatmap.AddTilesTo(heatMap, new [] {modifiedTile},
-                            ((tile, location, existingTargetValue, userValue) =>
+                            (tile, location, existingTargetValue, userValue) =>
                             {
                                 // there is no data here!
                                 if (userValue == 0) return existingTargetValue;
                                 
                                 // decode existing value.
-                                var (userCount, tripCount) = Decode(existingTargetValue);
-
+                                var (userCount, tripCount) = Encoder.Decode(existingTargetValue);
+                                
                                 // add user data and encode.
-                                return Encode(userCount + 1, tripCount + userValue);
-                            }));
+                                return Encoder.Encode(userCount + 1, tripCount + userValue);
+                            });
                     }
                 }
                 
@@ -216,11 +206,11 @@ namespace HeatMap.Tiles.Service
                     newTile.UpdateValues(v =>
                     {
                         // decode existing value.
-                        var (userCount, tripCount) = Decode(v.value);
+                        var (userCount, _) = Encoder.Decode(v.value);
                         
                         // if the user count is lower than threshold just remove the sample.
-                        if (userCount < _configuration.UserThreshold) return 0;
-
+                        if (userCount < (ulong)_configuration.UserThreshold) return 0;
+                
                         return v.value;
                     });
                 }
@@ -270,7 +260,7 @@ namespace HeatMap.Tiles.Service
             // log when tiles are written.
             var vectorTiles = heatMap.ToVectorTiles(updatedTiles, (t, v) =>
             {
-                var (userCount, tripCount) = Decode(v);
+                var (userCount, tripCount) = Encoder.Decode(v);
 
                 if (userCount == 0) return null;
                 
