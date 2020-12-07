@@ -107,16 +107,16 @@ namespace HeatMap.Tiles
         /// <returns>True if the tile was found and removed.</returns>
         public bool TryRemoveTile((uint x, uint y, int z) tile)
         {
-            if (!_tiles.TryGetValue(tile, out var heatMapTile)) return false;
-            
-            heatMapTile.Dispose();
-            
-            var file = FileName(tile.x, tile.y, tile.z);
-            if (File.Exists(file))
+            if (_tiles.TryGetValue(tile, out var heatMapTile))
             {
-                File.Delete(file);
+                heatMapTile.Dispose();
+                _tiles.Remove(tile);
             }
 
+            var file = FileName(tile.x, tile.y, tile.z);
+            if (!File.Exists(file)) return false;
+            
+            File.Delete(file);
             return true;
         }
 
